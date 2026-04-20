@@ -16,6 +16,33 @@ pub struct Usage {
     pub output_tokens: Option<u32>,
 }
 
+/// A thinking block returned by extended-thinking models.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+pub struct Thinking {
+    pub thinking: String,
+    pub signature: String,
+}
+
+impl From<Thinking> for MessageContent {
+    fn from(thinking: Thinking) -> Self {
+        MessageContent::Thinking(thinking)
+    }
+}
+
+impl From<Thinking> for MessageContentList {
+    fn from(thinking: Thinking) -> Self {
+        MessageContentList(vec![thinking.into()])
+    }
+}
+
+/// Configuration for extended thinking.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum ThinkingConfig {
+    Enabled { budget_tokens: u32 },
+    Disabled,
+}
+
 #[derive(Clone, Debug, Deserialize)]
 pub enum ToolChoice {
     Auto,
@@ -115,7 +142,10 @@ pub struct CreateMessagesRequest {
     pub top_p: Option<f32>, // 0 < x < 1
     #[serde(skip_serializing_if = "Option::is_none")]
     #[builder(default)]
-    pub system: Option<String>, // 0 < x < 1
+    pub system: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[builder(default)]
+    pub thinking: Option<ThinkingConfig>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Builder)]
@@ -157,6 +187,7 @@ pub enum MessageContent {
     ToolUse(ToolUse),
     ToolResult(ToolResult),
     Text(Text),
+    Thinking(Thinking),
     // TODO: Implement images and documents
 }
 
@@ -180,6 +211,14 @@ impl MessageContent {
     pub fn as_text(&self) -> Option<&Text> {
         if let MessageContent::Text(text) = self {
             Some(text)
+        } else {
+            None
+        }
+    }
+
+    pub fn as_thinking(&self) -> Option<&Thinking> {
+        if let MessageContent::Thinking(thinking) = self {
+            Some(thinking)
         } else {
             None
         }
@@ -307,6 +346,8 @@ impl Serialize for ToolChoice {
 pub enum ContentBlockDelta {
     TextDelta { text: String },
     InputJsonDelta { partial_json: String },
+    ThinkingDelta { thinking: String },
+    SignatureDelta { signature: String },
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug, Eq, PartialEq)]
