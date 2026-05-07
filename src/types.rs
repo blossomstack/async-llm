@@ -10,10 +10,47 @@ use tokio_stream::Stream;
 
 use crate::{errors::AnthropicError, messages};
 
-#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Default)]
 pub struct Usage {
     pub input_tokens: Option<u32>,
     pub output_tokens: Option<u32>,
+    /// Tokens written to the prompt cache on this request.
+    /// Populated when one or more `cache_control` markers caused a cache miss.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_creation_input_tokens: Option<u32>,
+    /// Tokens served from the prompt cache on this request.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_read_input_tokens: Option<u32>,
+}
+
+/// Marker placed on a content block / tool / system block to define a cache breakpoint.
+///
+/// A breakpoint caches the entire prefix that precedes it (in serialized order:
+/// `tools → system → messages`). Up to four breakpoints per request.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum CacheControl {
+    Ephemeral {
+        /// Cache TTL — `"5m"` (default) or `"1h"`. `None` means the API default.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        ttl: Option<String>,
+    },
+}
+
+impl CacheControl {
+    /// Default 5-minute ephemeral breakpoint.
+    #[must_use]
+    pub fn ephemeral() -> Self {
+        CacheControl::Ephemeral { ttl: None }
+    }
+
+    /// Ephemeral breakpoint with an explicit TTL (e.g. `"5m"`, `"1h"`).
+    #[must_use]
+    pub fn ephemeral_with_ttl(ttl: impl Into<String>) -> Self {
+        CacheControl::Ephemeral {
+            ttl: Some(ttl.into()),
+        }
+    }
 }
 
 /// A thinking block returned by extended-thinking models.
@@ -21,6 +58,8 @@ pub struct Usage {
 pub struct Thinking {
     pub thinking: String,
     pub signature: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_control: Option<CacheControl>,
 }
 
 impl From<Thinking> for MessageContent {
@@ -231,6 +270,8 @@ pub struct ToolUse {
     pub id: String,
     pub input: Value,
     pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_control: Option<CacheControl>,
 }
 
 impl From<ToolUse> for MessageContent {
@@ -251,6 +292,8 @@ pub struct ToolResult {
     pub tool_use_id: String,
     pub content: Option<String>,
     pub is_error: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_control: Option<CacheControl>,
 }
 
 impl From<ToolResult> for MessageContent {
@@ -269,12 +312,15 @@ impl From<ToolResult> for MessageContentList {
 #[builder(setter(into, strip_option), default)]
 pub struct Text {
     pub text: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_control: Option<CacheControl>,
 }
 
 impl<S: AsRef<str>> From<S> for Text {
     fn from(s: S) -> Self {
         Text {
             text: s.as_ref().to_string(),
+            ..Default::default()
         }
     }
 }
@@ -295,6 +341,7 @@ impl<S: AsRef<str>> From<S> for MessageContent {
     fn from(s: S) -> Self {
         MessageContent::Text(Text {
             text: s.as_ref().to_string(),
+            ..Default::default()
         })
     }
 }
@@ -447,6 +494,8 @@ mod tests {
 
         assert_eq!(usage.input_tokens, Some(10));
         assert_eq!(usage.output_tokens, Some(12));
+        assert_eq!(usage.cache_creation_input_tokens, Some(0));
+        assert_eq!(usage.cache_read_input_tokens, Some(0));
         assert_eq!(
             response.id,
             Some("msg_01KkaCASJuaAgTWD2wqdbwC8".to_string())
@@ -468,6 +517,7 @@ mod tests {
                 .as_text(),
             Some(&Text {
                 text: "Hi! How can I help you today?".to_string(),
+                cache_control: None,
             })
         );
     }
@@ -481,7 +531,8 @@ mod tests {
             Message {
                 role: MessageRole::User,
                 content: MessageContentList(vec![MessageContent::Text(Text {
-                    text: "Hello world!".to_string()
+                    text: "Hello world!".to_string(),
+                    cache_control: None,
                 })]),
             }
         );
