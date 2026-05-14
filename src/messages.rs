@@ -1,7 +1,7 @@
 use crate::{
+    Client,
     errors::AnthropicError,
     types::{CreateMessagesRequest, CreateMessagesResponse, CreateMessagesResponseStream},
-    Client,
 };
 
 pub const DEFAULT_MAX_TOKENS: i32 = 2048;

@@ -1,7 +1,7 @@
 use crate::{
+    Client,
     errors::AnthropicError,
     types::{GetModelResponse, ListModelsResponse},
-    Client,
 };
 
 pub const DEFAULT_MAX_TOKENS: i32 = 2048;

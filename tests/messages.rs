@@ -1,15 +1,15 @@
 use async_anthropic::{
+    Client,
     errors::AnthropicError,
     types::{CreateMessagesRequestBuilder, MessageBuilder, MessageContent, MessageRole},
-    Client,
 };
 use async_trait::async_trait;
 use backoff::ExponentialBackoffBuilder;
 use serde_json::json;
 use std::{sync::Arc, sync::Mutex, time::Duration};
 use wiremock::{
-    matchers::{method, path},
     Mock, MockServer, ResponseTemplate,
+    matchers::{method, path},
 };
 
 // Helper trait for setting up and tearing down mock server
@@ -60,11 +60,13 @@ async fn test_successful_request_execution() {
     let request = CreateMessagesRequestBuilder::default()
         .model("test-model".to_string())
         .stream(true)
-        .messages(vec![MessageBuilder::default()
-            .role(MessageRole::User)
-            .content("Hello world!")
-            .build()
-            .unwrap()])
+        .messages(vec![
+            MessageBuilder::default()
+                .role(MessageRole::User)
+                .content("Hello world!")
+                .build()
+                .unwrap(),
+        ])
         .build()
         .unwrap();
 
@@ -112,11 +114,13 @@ async fn test_with_backoff_basic() {
     let request = CreateMessagesRequestBuilder::default()
         .model("test-model".to_string())
         .stream(true)
-        .messages(vec![MessageBuilder::default()
-            .role(MessageRole::User)
-            .content("Hello world!")
-            .build()
-            .unwrap()])
+        .messages(vec![
+            MessageBuilder::default()
+                .role(MessageRole::User)
+                .content("Hello world!")
+                .build()
+                .unwrap(),
+        ])
         .build()
         .unwrap();
 
@@ -197,11 +201,13 @@ async fn test_default_backoff_retries() {
     let request = CreateMessagesRequestBuilder::default()
         .model("test-model".to_string())
         .stream(true)
-        .messages(vec![MessageBuilder::default()
-            .role(MessageRole::User)
-            .content("Hello world!")
-            .build()
-            .unwrap()])
+        .messages(vec![
+            MessageBuilder::default()
+                .role(MessageRole::User)
+                .content("Hello world!")
+                .build()
+                .unwrap(),
+        ])
         .build()
         .unwrap();
 
@@ -238,11 +244,13 @@ async fn test_error_handling_bad_request() {
     let request = CreateMessagesRequestBuilder::default()
         .model("test-model".to_string())
         .stream(true)
-        .messages(vec![MessageBuilder::default()
-            .role(MessageRole::User)
-            .content("Hello world!")
-            .build()
-            .unwrap()])
+        .messages(vec![
+            MessageBuilder::default()
+                .role(MessageRole::User)
+                .content("Hello world!")
+                .build()
+                .unwrap(),
+        ])
         .build()
         .unwrap();
 
@@ -278,11 +286,13 @@ async fn test_error_handling_unauthorized() {
     let request = CreateMessagesRequestBuilder::default()
         .model("test-model".to_string())
         .stream(true)
-        .messages(vec![MessageBuilder::default()
-            .role(MessageRole::User)
-            .content("Hello world!")
-            .build()
-            .unwrap()])
+        .messages(vec![
+            MessageBuilder::default()
+                .role(MessageRole::User)
+                .content("Hello world!")
+                .build()
+                .unwrap(),
+        ])
         .build()
         .unwrap();
 
