@@ -57,6 +57,7 @@ impl CacheControl {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub struct Thinking {
     pub thinking: String,
+    #[serde(default)]
     pub signature: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cache_control: Option<CacheControl>,
