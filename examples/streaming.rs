@@ -1,8 +1,8 @@
 // examples/basic_usage.rs
 
-use async_anthropic::{
-    Client,
+use async_llm::{
     types::{CreateMessagesRequestBuilder, MessageBuilder, MessageRole},
+    Client,
 };
 use tokio_stream::StreamExt as _;
 
@@ -12,13 +12,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let request = CreateMessagesRequestBuilder::default()
         .model("claude-3-5-sonnet-20241022")
-        .messages(vec![
-            MessageBuilder::default()
-                .role(MessageRole::User)
-                .content("Hello claude!!")
-                .build()
-                .unwrap(),
-        ])
+        .messages(vec![MessageBuilder::default()
+            .role(MessageRole::User)
+            .content("Hello claude!!")
+            .build()
+            .unwrap()])
         .build()
         .unwrap();
 

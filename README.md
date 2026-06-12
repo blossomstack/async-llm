@@ -1,7 +1,9 @@
 > [!NOTE]
 > Originally the client was forked from [`anthropic-sdk`](https://github.com/Mixpeal/anthropic-sdk) which no longer seems to be maintained. There might still be some references, even though the code has been rewritten from scratch.
 
-## async-anthropic
+## async-llm
+
+A fork of [`async-anthropic`](https://github.com/bosun-ai/async-anthropic), published as `async-llm`, adding thinking-block support, prompt caching (`cache_control` + cache usage fields), and assorted fixes.
 
 A client for the anthropic messages api, written in Rust. There are plenty of clients on crates.io, but we figured we needed another one. Specifically, a straightforward builder api, robust error handling, and room to grow. Tests are also nice.
 

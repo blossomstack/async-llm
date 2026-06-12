@@ -1,8 +1,8 @@
-use async_anthropic::{
-    Client,
+use async_llm::{
     types::{
         CreateMessagesRequestBuilder, MessageBuilder, MessageRole, ToolChoice, ToolResultBuilder,
     },
+    Client,
 };
 use serde_json::json;
 

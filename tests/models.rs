@@ -1,12 +1,12 @@
-use async_anthropic::{
-    Client,
+use async_llm::{
     errors::AnthropicError,
     types::{GetModelResponse, ListModelsResponse},
+    Client,
 };
 use async_trait::async_trait;
 use wiremock::{
-    Mock, MockServer, ResponseTemplate,
     matchers::{method, path},
+    Mock, MockServer, ResponseTemplate,
 };
 
 #[async_trait]

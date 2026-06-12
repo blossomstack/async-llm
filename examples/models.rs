@@ -1,6 +1,6 @@
 // examples/models.rs
 
-use async_anthropic::Client;
+use async_llm::Client;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
