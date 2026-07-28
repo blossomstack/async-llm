@@ -126,7 +126,7 @@ async fn test_with_backoff_basic() {
     assert!(
         matches!(result.as_ref().unwrap_err(), AnthropicError::ApiError(_)),
         "actual: {:?}",
-        &result
+        result
     )
 }
 
@@ -252,7 +252,7 @@ async fn test_error_handling_bad_request() {
     assert!(
         matches!(result.as_ref().unwrap_err(), AnthropicError::BadRequest(_)),
         "actual: {:?}",
-        &result
+        result
     )
 }
 
@@ -292,6 +292,84 @@ async fn test_error_handling_unauthorized() {
     assert!(
         matches!(result.as_ref().unwrap_err(), AnthropicError::Unauthorized),
         "actual: {:?}",
-        &result
+        result
     )
+}
+
+#[test]
+fn thinking_signature_is_omitted_when_absent() {
+    use async_llm::types::Thinking;
+    let block = Thinking {
+        thinking: "reasoning".into(),
+        signature: None,
+        cache_control: None,
+    };
+    let json = serde_json::to_value(&block).expect("serializes");
+    assert_eq!(json["thinking"], "reasoning");
+    assert!(
+        json.get("signature").is_none(),
+        "signature must be omitted, not sent as an empty string: {json}"
+    );
+}
+
+#[test]
+fn thinking_signature_round_trips_when_present() {
+    use async_llm::types::Thinking;
+    let block = Thinking {
+        thinking: "reasoning".into(),
+        signature: Some("sig-blob".into()),
+        cache_control: None,
+    };
+    let json = serde_json::to_value(&block).expect("serializes");
+    assert_eq!(json["signature"], "sig-blob");
+    let back: Thinking = serde_json::from_value(json).expect("deserializes");
+    assert_eq!(back.signature.as_deref(), Some("sig-blob"));
+}
+
+#[test]
+fn thinking_deserializes_without_signature() {
+    use async_llm::types::Thinking;
+    let block: Thinking =
+        serde_json::from_value(serde_json::json!({"thinking": "reasoning"})).expect("deserializes");
+    assert_eq!(block.signature, None);
+}
+
+#[test]
+fn output_config_effort_serializes_under_output_config() {
+    use async_llm::types::{
+        CreateMessagesRequestBuilder, MessageBuilder, MessageRole, OutputConfig,
+    };
+    let request = CreateMessagesRequestBuilder::default()
+        .model("claude-opus-4-8".to_string())
+        .messages(vec![MessageBuilder::default()
+            .role(MessageRole::User)
+            .content("hi")
+            .build()
+            .expect("message builds")])
+        .output_config(OutputConfig {
+            effort: Some("high".into()),
+        })
+        .build()
+        .expect("request builds");
+    let json = serde_json::to_value(&request).expect("serializes");
+    assert_eq!(json["output_config"]["effort"], "high");
+}
+
+#[test]
+fn output_config_is_omitted_when_unset() {
+    use async_llm::types::{CreateMessagesRequestBuilder, MessageBuilder, MessageRole};
+    let request = CreateMessagesRequestBuilder::default()
+        .model("claude-opus-4-8".to_string())
+        .messages(vec![MessageBuilder::default()
+            .role(MessageRole::User)
+            .content("hi")
+            .build()
+            .expect("message builds")])
+        .build()
+        .expect("request builds");
+    let json = serde_json::to_value(&request).expect("serializes");
+    assert!(
+        json.get("output_config").is_none(),
+        "output_config must be absent when unset: {json}"
+    );
 }

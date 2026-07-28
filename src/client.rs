@@ -131,8 +131,8 @@ impl Client {
     fn format_url(&self, path: &str) -> String {
         format!(
             "{}/{}",
-            &self.base_url.trim_end_matches('/'),
-            &path.trim_start_matches('/')
+            self.base_url.trim_end_matches('/'),
+            path.trim_start_matches('/')
         )
     }
 
