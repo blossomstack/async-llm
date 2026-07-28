@@ -57,8 +57,13 @@ impl CacheControl {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub struct Thinking {
     pub thinking: String,
-    #[serde(default)]
-    pub signature: String,
+    /// Provider replay signature. `None` when the provider did not supply one,
+    /// or when the caller deliberately dropped it — genuine Anthropic validates
+    /// this on replay, but Anthropic-compatible endpoints generally do not.
+    /// Omitted from the request when `None`; an empty string is *not* a valid
+    /// substitute.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub signature: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cache_control: Option<CacheControl>,
 }
@@ -81,6 +86,16 @@ impl From<Thinking> for MessageContentList {
 pub enum ThinkingConfig {
     Enabled { budget_tokens: u32 },
     Disabled,
+}
+
+/// Output-shaping controls. Currently just `effort`, which sets reasoning depth
+/// on models that support it (`low`/`medium`/`high`/`xhigh`/`max` on current
+/// Anthropic models). The accepted set is model-specific, so this is an
+/// unvalidated string and the caller owns the vocabulary.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+pub struct OutputConfig {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub effort: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -186,6 +201,9 @@ pub struct CreateMessagesRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[builder(default)]
     pub thinking: Option<ThinkingConfig>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[builder(default)]
+    pub output_config: Option<OutputConfig>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Builder)]
