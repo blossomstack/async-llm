@@ -336,16 +336,16 @@ fn thinking_deserializes_without_signature() {
 
 #[test]
 fn output_config_effort_serializes_under_output_config() {
-    use async_llm::types::{CreateMessagesRequestBuilder, MessageBuilder, MessageRole, OutputConfig};
+    use async_llm::types::{
+        CreateMessagesRequestBuilder, MessageBuilder, MessageRole, OutputConfig,
+    };
     let request = CreateMessagesRequestBuilder::default()
         .model("claude-opus-4-8".to_string())
-        .messages(vec![
-            MessageBuilder::default()
-                .role(MessageRole::User)
-                .content("hi")
-                .build()
-                .expect("message builds"),
-        ])
+        .messages(vec![MessageBuilder::default()
+            .role(MessageRole::User)
+            .content("hi")
+            .build()
+            .expect("message builds")])
         .output_config(OutputConfig {
             effort: Some("high".into()),
         })
@@ -360,13 +360,11 @@ fn output_config_is_omitted_when_unset() {
     use async_llm::types::{CreateMessagesRequestBuilder, MessageBuilder, MessageRole};
     let request = CreateMessagesRequestBuilder::default()
         .model("claude-opus-4-8".to_string())
-        .messages(vec![
-            MessageBuilder::default()
-                .role(MessageRole::User)
-                .content("hi")
-                .build()
-                .expect("message builds"),
-        ])
+        .messages(vec![MessageBuilder::default()
+            .role(MessageRole::User)
+            .content("hi")
+            .build()
+            .expect("message builds")])
         .build()
         .expect("request builds");
     let json = serde_json::to_value(&request).expect("serializes");
