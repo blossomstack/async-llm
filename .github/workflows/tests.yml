@@ -9,6 +9,9 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  # Pinned Rust toolchain — single source of truth for CI. Bump deliberately
+  # (a new stable can introduce clippy lints that fail under -D warnings).
+  RUST_TOOLCHAIN: "1.96.0"
   RUST_LOG: debug
   RUST_BACKTRACE: 1
   RUSTFLAGS: "-Dwarnings"
@@ -25,7 +28,10 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: dtolnay/rust-toolchain@stable
+      - name: Install Rust ${{ env.RUST_TOOLCHAIN }}
+        uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
       - name: Install Protoc
         uses: arduino/setup-protoc@v3
         with:
@@ -41,7 +47,11 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - name: Install Rust ${{ env.RUST_TOOLCHAIN }}
+        uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          components: clippy, rustfmt
       - name: Install Protoc
         uses: arduino/setup-protoc@v3
         with:
