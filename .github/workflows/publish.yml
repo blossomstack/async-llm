@@ -17,6 +17,10 @@ on:
 permissions:
   contents: read
 
+env:
+  # Match tests.yml — single source of truth for the pinned toolchain.
+  RUST_TOOLCHAIN: "1.96.0"
+
 jobs:
   publish:
     name: Publish to crates.io
@@ -27,7 +31,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: dtolnay/rust-toolchain@stable
+      - name: Install Rust ${{ env.RUST_TOOLCHAIN }}
+        uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
 
       - name: Authenticate with crates.io (OIDC)
         id: auth
