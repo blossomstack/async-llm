@@ -126,7 +126,7 @@ async fn test_with_backoff_basic() {
     assert!(
         matches!(result.as_ref().unwrap_err(), AnthropicError::ApiError(_)),
         "actual: {:?}",
-        &result
+        result
     )
 }
 
@@ -252,7 +252,7 @@ async fn test_error_handling_bad_request() {
     assert!(
         matches!(result.as_ref().unwrap_err(), AnthropicError::BadRequest(_)),
         "actual: {:?}",
-        &result
+        result
     )
 }
 
@@ -292,7 +292,7 @@ async fn test_error_handling_unauthorized() {
     assert!(
         matches!(result.as_ref().unwrap_err(), AnthropicError::Unauthorized),
         "actual: {:?}",
-        &result
+        result
     )
 }
 
