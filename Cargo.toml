@@ -1,11 +1,11 @@
 [package]
 name = "async-llm"
-version = "0.7.0"
+version = "0.8.0"
 edition = "2021"
 authors = ["Timon Vonk <timon@bosun.ai>"]
 license = "MIT"
-homepage = "https://github.com/zhxiaogg/async-anthropic"
-repository = "https://github.com/zhxiaogg/async-anthropic"
+homepage = "https://github.com/blossomstack/async-llm"
+repository = "https://github.com/blossomstack/async-llm"
 categories = ["api-bindings", "web-programming", "asynchronous"]
 keywords = ["llm", "anthropic", "ai", "gpt", "claude"]
 description = "Async Rust client for LLM APIs - Anthropic Messages API today; fork of async-anthropic with thinking-block and prompt-cache support."
