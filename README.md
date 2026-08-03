@@ -23,7 +23,7 @@ A client for the anthropic messages api, written in Rust. There are plenty of cl
 Add the project with `cargo`:
 
 ```bash
-cargo add async-anthropic
+cargo add async-llm
 ```
 
 ### Usage
