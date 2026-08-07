@@ -29,7 +29,7 @@ jobs:
       id-token: write # mint the OIDC token exchanged for a temp crates.io token
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install Rust ${{ env.RUST_TOOLCHAIN }}
         uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # master
