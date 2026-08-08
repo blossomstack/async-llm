@@ -20,11 +20,50 @@ A client for the anthropic messages api, written in Rust. There are plenty of cl
 
 ### Installation
 
-Add the project with `cargo`:
+The default feature set provides the Anthropic-compatible client:
 
-```bash
-cargo add async-llm
+```toml
+[dependencies]
+async-llm = "0.9"
 ```
+
+Enable OpenAI Chat Completions with its protocol-native API:
+
+```toml
+[dependencies]
+async-llm = { version = "0.9", features = ["openai"] }
+```
+
+Enable the OpenAI Responses API with its protocol-native request, response, and streaming types:
+
+```toml
+[dependencies]
+async-llm = { version = "0.9", features = ["responses"] }
+```
+
+Enable the deterministic local mock server for tests:
+
+```toml
+[dev-dependencies]
+async-llm = { version = "0.9", features = ["mock"] }
+```
+
+### Native APIs
+
+The OpenAI features expose their protocol-native types rather than translating through the Anthropic API:
+
+```rust
+#[cfg(feature = "openai")]
+use async_llm::openai::Client as OpenAiClient;
+
+#[cfg(feature = "responses")]
+use async_llm::responses::Client as ResponsesClient;
+
+#[cfg(feature = "mock")]
+use async_llm::mock::MockLlmServer;
+```
+
+`MockLlmServer` serves Anthropic Messages, OpenAI Chat Completions, and OpenAI Responses routes from a deterministic response queue. It is intended for repeatable tests, not production inference.
 
 ### Usage
 

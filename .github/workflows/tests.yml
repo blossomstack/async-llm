@@ -38,8 +38,14 @@ jobs:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
       # Required for copypasta builds on linux
       # Temporary fix until docker runs properly in ci
-      - name: "Test"
+      - name: Test default features
         run: cargo test -j 2
+      - name: Test OpenAI and mock features
+        run: cargo test -j 2 --no-default-features --features openai,mock
+      - name: Test Responses and mock features
+        run: cargo test -j 2 --no-default-features --features responses,mock
+      - name: Test all features
+        run: cargo test -j 2 --all-features
 
   lint:
     name: Lint

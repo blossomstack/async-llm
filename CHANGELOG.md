@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.0](https://github.com/blossomstack/async-llm/compare/v0.8.0...v0.9.0) - 2026-08-07
+
+### Added
+
+- Feature-gated `openai`, `responses`, and `mock` modules for OpenAI Chat Completions, OpenAI Responses, and deterministic local protocol tests.
+- Protocol-native OpenAI Chat Completions and Responses request, response, and streaming types, available through the `openai` and `responses` features.
+- The `async-llm-mock` binary, available only with the `mock` feature.
+
+### Changed
+
+- The default feature set continues to provide the existing Anthropic-compatible client API.
+
 ## [0.8.0](https://github.com/blossomstack/async-llm/compare/v0.7.0...v0.8.0) - 2026-08-02
 
 ### Changed
