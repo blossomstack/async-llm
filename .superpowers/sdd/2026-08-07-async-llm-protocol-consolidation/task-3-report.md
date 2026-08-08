@@ -79,7 +79,9 @@ Each red phase was followed by the minimum implementation and an observed green 
 - `src/responses/chatgpt.rs`
   - Stored credentials, generic async persistence trait, refresh behavior, device authorization/poll flow, and ID-token account-id extraction.
 - `tests/responses_client.rs`
-  - Direct `wiremock` and parser coverage; no Task 4 mock module is added.
+  - Direct `wiremock` and parser coverage for request, stream, device-code, and credential behavior.
+- `tests/responses_review.rs`
+  - Native terminal/error/final-output/unknown-event parser regression coverage; no Task 4 mock module is added.
 
 ## Exact public API
 
@@ -108,8 +110,8 @@ impl ResponsesRequest {
 }
 
 pub use async_llm::responses::chatgpt::{
-    ChatGptTokens, DeviceLogin, StoredTokens, TokenStore, DEFAULT_ISSUER,
-    poll_device_login, start_device_login,
+    ChatGptTokens, DeviceLogin, DeviceLoginPoll, StoredTokens, TokenStore,
+    DEFAULT_ISSUER, poll_device_login, start_device_login,
 };
 
 pub async fn start_device_login(
@@ -124,7 +126,7 @@ pub async fn poll_device_login(
     client_id: impl Into<String>,
     login: &DeviceLogin,
     store: Arc<dyn TokenStore>,
-) -> Result<Arc<ChatGptTokens>, ResponsesError>;
+) -> Result<DeviceLoginPoll, ResponsesError>;
 ```
 
 `ResponsesRequest` deliberately takes native `Vec<serde_json::Value>` input items; history conversion remains adapter-owned. `ResponsesStreamEvent` exposes text, function-argument, reasoning summary/encrypted-content, output-item, completed, incomplete, failed, and forward-compatible other events. `response.incomplete` remains an event, and `is_max_output_tokens()` preserves the protocol reason.
@@ -157,14 +159,15 @@ git diff --check
 
 The 11 native Responses tests cover request flags/native input/tools/reasoning, incomplete reasons, text/function/encrypted-reasoning/summary/output-item events, API-key request/header/path, ChatGPT Codex endpoint and account header, completed and cut streams, HTTP 429 classification/body capture, device authorization and polling payloads, account-id precedence, and refresh persistence.
 
-## Commit
+## Commits
 
 - `62d0c58233b99eae6ed2c7afdc9bc0572323ef68` — `feat: add OpenAI Responses client`
+- `e095fe6` — `fix: complete Responses protocol handling`
+- `7782a1f6cea2480d562231654ac26843bdab8154` — `fix: preserve Responses terminal errors`
 
 ## Concerns
 
 - The Task 3 brief's mock-backed `responses,mock` test command is deliberately not run: Task 4 owns `async_llm::mock`, and no placeholder/mock implementation was added. Task 3 uses existing direct `wiremock` tests instead.
-- The requested Horsie provider source is not present in this allowed worktree or its reachable Git history. The implementation follows the Task 3 brief, public OpenAI Responses/device-flow protocol shapes, and local native tests; exact parity with unavailable Horsie-only details should be audited when that source is available.
 - `cargo +1.96.0 test --default-features` is not a valid Cargo invocation (default features are selected by omitting feature flags); the successful default verification used `cargo +1.96.0 test`.
 
 ## Review fix
