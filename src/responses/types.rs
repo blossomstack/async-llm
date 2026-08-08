@@ -69,6 +69,8 @@ pub struct ResponsesRequest {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub include: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prompt_cache_key: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_output_tokens: Option<u32>,
 }
 
@@ -85,7 +87,8 @@ impl ResponsesRequest {
             stream: true,
             store: false,
             reasoning: None,
-            include: Vec::new(),
+            include: vec!["reasoning.encrypted_content".into()],
+            prompt_cache_key: None,
             max_output_tokens: None,
         }
     }
@@ -138,6 +141,10 @@ pub struct ResponseOutputItem {
     pub role: Option<String>,
     #[serde(default)]
     pub content: Vec<ResponseContentItem>,
+    #[serde(default)]
+    pub encrypted_content: Option<String>,
+    #[serde(default)]
+    pub summary: Vec<ResponseContentItem>,
     #[serde(default)]
     pub call_id: Option<String>,
     #[serde(default)]
@@ -216,6 +223,13 @@ pub enum ResponsesStreamEvent {
         output_index: usize,
         content_index: usize,
         encrypted_content: String,
+    },
+    #[serde(rename = "response.reasoning_text.delta")]
+    ReasoningTextDelta {
+        item_id: String,
+        output_index: usize,
+        content_index: usize,
+        delta: String,
     },
     #[serde(rename = "response.output_item.added")]
     OutputItemAdded {
