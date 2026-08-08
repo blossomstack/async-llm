@@ -78,6 +78,7 @@ dependencies = [
  "async-stream",
  "async-trait",
  "backoff",
+ "base64",
  "derive_builder",
  "reqwest",
  "reqwest-eventsource",
