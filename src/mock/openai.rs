@@ -331,11 +331,11 @@ mod tests {
     #[tokio::test]
     async fn cut_stream_omits_the_terminal_frame() {
         let server = MockLlmServer::builder().build().await;
-        server.queue_cut_stream(["hel", "lo"], 1);
+        server.queue_cut_stream(["hello", "world"], 1);
 
         let body = post_stream(&server).await.text().await.unwrap();
 
-        assert!(body.contains("hel"), "body was: {body}");
+        assert!(body.contains("hello"), "body was: {body}");
         assert!(
             !body.contains("[DONE]"),
             "a cut stream must not carry its terminator: {body}"

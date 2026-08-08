@@ -458,11 +458,11 @@ mod tests {
     #[tokio::test]
     async fn a_cut_stream_omits_its_terminal_frame() {
         let server = MockLlmServer::builder().build().await;
-        server.queue_cut_stream(["hel", "lo"], 1);
+        server.queue_cut_stream(["hello", "world"], 1);
 
         let body = post_stream(&server).await.text().await.unwrap();
 
-        assert!(body.contains("hel"), "body: {body}");
+        assert!(body.contains("hello"), "body: {body}");
         assert!(
             !body.contains("response.completed"),
             "a cut stream must not complete: {body}"

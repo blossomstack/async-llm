@@ -187,7 +187,7 @@ async fn chatgpt_refresh_extracts_preferred_account_and_persists_tokens() {
         }
     }
 
-    let id_token = "eyJhbGciOiJub25lIn0.eyJodHRwczovL2FwaS5vcGVuYWkuY29tL2F1dGgiOnsiY2hhdGdwdF9hY2NvdW50X2lkIjoiYWNjdF9wcmVmZXJyZWQifSwiYWNjb3VudF9pZCI6ImFjY3RfZmFsbGJhY2sifQ.";
+    let id_token = "eyJhbGciOiJub25lIn0.eyAiaHR0cHM6Ly9hcGkub3BlbmFpLmNvbS9hdXRoIjp7ImNoYXRncHRfYWNjb3VudF9pZCI6ImFjY3RfcHJlZmVycmVkIn0sImFjY291bnRfaWQiOiJhY2N0X2ZhbGxiYWNrIn0.";
     let stored = StoredTokens::new("old-access", "refresh", id_token).unwrap();
     assert_eq!(stored.account_id.as_deref(), Some("acct_preferred"));
 
@@ -332,7 +332,7 @@ async fn chatgpt_client_uses_codex_endpoint_and_account_header() {
         }
     }
 
-    let id_token = "eyJhbGciOiJub25lIn0.eyJodHRwczovL2FwaS5vcGVuYWkuY29tL2F1dGgiOnsiY2hhdGdwdF9hY2NvdW50X2lkIjoiYWNjdF8xIn19.";
+    let id_token = "eyJhbGciOiJub25lIn0.eyAiaHR0cHM6Ly9hcGkub3BlbmFpLmNvbS9hdXRoIjp7ImNoYXRncHRfYWNjb3VudF9pZCI6ImFjY3RfMSJ9fQ.";
     let tokens = Arc::new(ChatGptTokens::with_store_and_issuer(
         StoredTokens::new("access", "refresh", id_token).unwrap(),
         Arc::new(EmptyStore),
@@ -433,8 +433,8 @@ fn reasoning_output_and_text_delta_preserve_encrypted_content_and_summary() {
 fn id_token_account_claims_prefer_top_level_then_namespaced_then_organization() {
     use async_llm::responses::chatgpt::StoredTokens;
 
-    let top_level = "eyJhbGciOiJub25lIn0.eyJjaGF0Z3B0X2FjY291bnRfaWQiOiJ0b3AiLCJodHRwczovL2FwaS5vcGVuYWkuY29tL2F1dGgiOnsiY2hhdGdwdF9hY2NvdW50X2lkIjoibmFtZXNwYWNlZCJ9LCJvcmdhbml6YXRpb25zIjpbeyJpZCI6Im9yZyJ9XX0.";
-    let namespaced = "eyJhbGciOiJub25lIn0.eyJodHRwczovL2FwaS5vcGVuYWkuY29tL2F1dGgiOnsiY2hhdGdwdF9hY2NvdW50X2lkIjoibmFtZXNwYWNlZCJ9LCJvcmdhbml6YXRpb25zIjpbeyJpZCI6Im9yZyJ9XX0.";
+    let top_level = "eyJhbGciOiJub25lIn0.eyAiY2hhdGdwdF9hY2NvdW50X2lkIjoidG9wIiwiaHR0cHM6Ly9hcGkub3BlbmFpLmNvbS9hdXRoIjp7ImNoYXRncHRfYWNjb3VudF9pZCI6Im5hbWVzcGFjZWQifSwib3JnYW5pemF0aW9ucyI6W3siaWQiOiJvcmcifV19.";
+    let namespaced = "eyJhbGciOiJub25lIn0.eyAiaHR0cHM6Ly9hcGkub3BlbmFpLmNvbS9hdXRoIjp7ImNoYXRncHRfYWNjb3VudF9pZCI6Im5hbWVzcGFjZWQifSwib3JnYW5pemF0aW9ucyI6W3siaWQiOiJvcmcifV19.";
     let organization = "eyJhbGciOiJub25lIn0.eyJvcmdhbml6YXRpb25zIjpbeyJpZCI6Im9yZyJ9XX0.";
 
     assert_eq!(
