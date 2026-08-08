@@ -1,6 +1,6 @@
 //! Native OpenAI Chat Completions protocol types.
 
-use serde::{Deserialize, Serialize};
+use serde::{de::Error as DeError, Deserialize, Deserializer, Serialize, Serializer};
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 pub struct FunctionCall {
@@ -89,6 +89,94 @@ impl ToolDef {
     }
 }
 
+/// Selects whether Chat Completions may call tools and, if so, which function.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ToolChoice {
+    /// The model decides whether to call a tool.
+    Auto,
+    /// The model must call one or more tools.
+    Required,
+    /// The model must not call a tool.
+    None,
+    /// The model must call the named function.
+    Function { name: String },
+}
+
+impl Serialize for ToolChoice {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match self {
+            Self::Auto => serializer.serialize_str("auto"),
+            Self::Required => serializer.serialize_str("required"),
+            Self::None => serializer.serialize_str("none"),
+            Self::Function { name } => NamedFunctionToolChoice::new(name).serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ToolChoice {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        match ToolChoiceRepr::deserialize(deserializer)? {
+            ToolChoiceRepr::Selector(selector) => match selector.as_str() {
+                "auto" => Ok(Self::Auto),
+                "required" => Ok(Self::Required),
+                "none" => Ok(Self::None),
+                _ => Err(DeError::custom("unknown OpenAI tool choice selector")),
+            },
+            ToolChoiceRepr::Function { kind, function } if kind == "function" => {
+                Ok(Self::Function {
+                    name: function.name,
+                })
+            }
+            ToolChoiceRepr::Function { .. } => Err(DeError::custom(
+                "named OpenAI tool choice must be a function",
+            )),
+        }
+    }
+}
+
+#[derive(Serialize)]
+struct NamedFunctionToolChoice<'a> {
+    #[serde(rename = "type")]
+    kind: &'static str,
+    function: NamedFunction<'a>,
+}
+
+impl<'a> NamedFunctionToolChoice<'a> {
+    fn new(name: &'a str) -> Self {
+        Self {
+            kind: "function",
+            function: NamedFunction { name },
+        }
+    }
+}
+
+#[derive(Serialize)]
+struct NamedFunction<'a> {
+    name: &'a str,
+}
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum ToolChoiceRepr {
+    Selector(String),
+    Function {
+        #[serde(rename = "type")]
+        kind: String,
+        function: NamedFunctionOwned,
+    },
+}
+
+#[derive(Deserialize)]
+struct NamedFunctionOwned {
+    name: String,
+}
+
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct StreamOptions {
     pub include_usage: bool,
@@ -104,7 +192,7 @@ pub struct ChatCompletionRequest {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tools: Vec<ToolDef>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub tool_choice: Option<serde_json::Value>,
+    pub tool_choice: Option<ToolChoice>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reasoning_effort: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

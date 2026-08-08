@@ -12,7 +12,7 @@ use tokio_stream::{Stream, StreamExt as _};
 pub use types::{
     ChatCompletionChunk, ChatCompletionRequest, ChatMessage, Choice, Delta, DeltaFunction,
     DeltaToolCall, FunctionCall, FunctionDef, PromptTokensDetails, StreamOptions, ToolCall,
-    ToolDef, WireUsage,
+    ToolChoice, ToolDef, WireUsage,
 };
 
 const DEFAULT_BASE_URL: &str = "https://api.openai.com";

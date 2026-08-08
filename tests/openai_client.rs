@@ -1,7 +1,7 @@
 #![cfg(feature = "openai")]
 
 use async_llm::openai::{
-    ChatCompletionError, ChatCompletionRequest, ChatMessage, Client, StreamOptions,
+    ChatCompletionError, ChatCompletionRequest, ChatMessage, Client, StreamOptions, ToolChoice,
 };
 use tokio_stream::StreamExt;
 use wiremock::{
@@ -27,6 +27,32 @@ fn serializes_chat_completion_stream_request() {
 
     assert_eq!(value["stream"], true);
     assert_eq!(value["stream_options"]["include_usage"], true);
+}
+
+#[test]
+fn serializes_tool_choice_selectors() {
+    let cases = [
+        (ToolChoice::Auto, serde_json::json!("auto")),
+        (ToolChoice::Required, serde_json::json!("required")),
+        (
+            ToolChoice::Function {
+                name: "weather".into(),
+            },
+            serde_json::json!({"type": "function", "function": {"name": "weather"}}),
+        ),
+    ];
+
+    for (tool_choice, expected) in cases {
+        let request = ChatCompletionRequest {
+            tool_choice: Some(tool_choice),
+            ..stream_request()
+        };
+
+        assert_eq!(
+            serde_json::to_value(request).unwrap()["tool_choice"],
+            expected
+        );
+    }
 }
 
 #[test]
