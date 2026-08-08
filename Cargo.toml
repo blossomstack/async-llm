@@ -22,7 +22,8 @@ tracing = "0.1.41"
 secrecy = "0.10.3"
 backoff = { version = "0.4", features = ["futures", "tokio"] }
 tokio-stream = { default-features = false, version = "0.1.14" }
-tokio = { version = "1", default-features = false }
+tokio = { version = "1", default-features = false, features = ["time"] }
+async-stream = { version = "0.3", optional = true }
 
 
 [dev-dependencies]
@@ -35,7 +36,7 @@ test-log = "0.2.17"
 # By default, enable Anthropic support and use reqwest with rustls.
 default = ["anthropic", "rustls"]
 anthropic = []
-openai = []
+openai = ["dep:async-stream"]
 responses = []
 mock = []
 
