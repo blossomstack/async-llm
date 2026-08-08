@@ -258,3 +258,36 @@ git diff --check
 ```
 
 All passed.
+
+## Review findings follow-up
+
+### TDD evidence
+
+Each added regression was run under Rust 1.96.0 before its production change:
+
+1. `failed_response_and_error_events_preserve_server_details` initially failed with missing `CompletedResponse::status` / `error` fields and no `ResponsesStreamEvent::Error` variant. After adding the typed failure/error data and marking SSE `error` frames terminal, it passed.
+2. `final_refusal_and_unrecognized_events_preserve_protocol_data` initially failed because final text/function argument variants, refusal content, and payload-carrying `Other` were absent. It passed after adding those protocol types and the forward-compatible deserializer.
+3. `refresh_response_without_id_or_refresh_tokens_keeps_stored_identity` was run with the token response fallback removed and failed with `Authentication("token response omitted refresh_token")` for the exact `{"access_token":"replacement-access"}` response. Restoring the merge with the previous `StoredTokens` made it pass, including persisted refresh token, ID token, and account identity checks.
+4. `stored_tokens_debug_redacts_all_token_secrets` initially failed because derived `Debug` contained `access-secret`; the explicit redacting implementation made it pass.
+5. `error_event_is_terminal_without_an_incomplete_stream_error` was run with `Error` excluded from the terminal set and failed because the stream added `IncompleteStream`; restoring terminal handling made it pass. `failed_event_is_terminal_without_an_incomplete_stream_error` verifies the corresponding failed-response behavior.
+
+### Implementation
+
+- `response.failed` now retains response status and typed error details; typed `error` SSE events end streams without an `IncompleteStream` artifact.
+- Adds typed final output-text and function-argument events and preserves refusal content. Unknown event names and their entire raw JSON payload are represented by `ResponsesStreamEvent::Other { event_type, data }`.
+- OAuth refresh responses merge omitted ID/refresh tokens and account identity from the prior stored values.
+- `StoredTokens` has a redacting `Debug` implementation; access, refresh, and ID token values are never formatted.
+
+### Verification
+
+```sh
+rustfmt +1.96.0 --edition 2021 --check \
+  src/responses/mod.rs src/responses/types.rs src/responses/chatgpt.rs \
+  tests/responses_client.rs tests/responses_review.rs
+cargo +1.96.0 test --no-default-features --features responses --test responses_client
+# 18 passed
+cargo +1.96.0 test --no-default-features --features responses --test responses_review
+# 6 passed
+cargo +1.96.0 check --no-default-features --features responses
+git diff --check
+```

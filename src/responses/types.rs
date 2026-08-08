@@ -1,6 +1,6 @@
 //! Native OpenAI Responses API protocol types.
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 
 /// A function tool accepted by the OpenAI Responses API.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -126,6 +126,8 @@ pub struct ResponseContentItem {
     pub text: Option<String>,
     #[serde(default)]
     pub encrypted_content: Option<String>,
+    #[serde(default)]
+    pub refusal: Option<String>,
 }
 
 /// An output item in a completed Responses response.
@@ -170,9 +172,24 @@ pub struct CompletedResponse {
     #[serde(default)]
     pub id: Option<String>,
     #[serde(default)]
+    pub status: Option<String>,
+    #[serde(default)]
+    pub error: Option<ResponseErrorDetails>,
+    #[serde(default)]
     pub output: Vec<ResponseOutputItem>,
     #[serde(default)]
     pub usage: Option<ResponsesUsage>,
+}
+
+/// Error details reported by a failed Response or an `error` SSE event.
+#[derive(Debug, Clone, Default, Deserialize, PartialEq, Eq)]
+pub struct ResponseErrorDetails {
+    #[serde(default)]
+    pub code: Option<String>,
+    #[serde(default)]
+    pub message: Option<String>,
+    #[serde(default)]
+    pub param: Option<String>,
 }
 
 /// Completion data carried by `response.incomplete` events.
@@ -194,13 +211,20 @@ pub struct IncompleteDetails {
 /// A server-sent event emitted by the OpenAI Responses API.
 #[derive(Debug, Clone, Deserialize, PartialEq)]
 #[serde(tag = "type")]
-pub enum ResponsesStreamEvent {
+enum KnownResponsesStreamEvent {
     #[serde(rename = "response.output_text.delta")]
     OutputTextDelta {
         item_id: String,
         output_index: usize,
         content_index: usize,
         delta: String,
+    },
+    #[serde(rename = "response.output_text.done")]
+    OutputTextDone {
+        item_id: String,
+        output_index: usize,
+        content_index: usize,
+        text: String,
     },
     #[serde(rename = "response.function_call_arguments.delta")]
     FunctionCallArgumentsDelta {
@@ -209,6 +233,14 @@ pub enum ResponsesStreamEvent {
         #[serde(default)]
         call_id: Option<String>,
         delta: String,
+    },
+    #[serde(rename = "response.function_call_arguments.done")]
+    FunctionCallArgumentsDone {
+        item_id: String,
+        output_index: usize,
+        #[serde(default)]
+        call_id: Option<String>,
+        arguments: String,
     },
     #[serde(rename = "response.reasoning_summary_text.delta")]
     ReasoningSummaryTextDelta {
@@ -243,12 +275,211 @@ pub enum ResponsesStreamEvent {
     },
     #[serde(rename = "response.completed")]
     Completed { response: CompletedResponse },
+    #[serde(rename = "error")]
+    Error {
+        code: String,
+        message: String,
+        #[serde(default)]
+        param: Option<String>,
+    },
     #[serde(rename = "response.failed")]
     Failed { response: CompletedResponse },
     #[serde(rename = "response.incomplete")]
     Incomplete { response: IncompleteResponse },
-    #[serde(other)]
-    Other,
+}
+
+/// A server-sent event emitted by the OpenAI Responses API.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ResponsesStreamEvent {
+    OutputTextDelta {
+        item_id: String,
+        output_index: usize,
+        content_index: usize,
+        delta: String,
+    },
+    OutputTextDone {
+        item_id: String,
+        output_index: usize,
+        content_index: usize,
+        text: String,
+    },
+    FunctionCallArgumentsDelta {
+        item_id: String,
+        output_index: usize,
+        call_id: Option<String>,
+        delta: String,
+    },
+    FunctionCallArgumentsDone {
+        item_id: String,
+        output_index: usize,
+        call_id: Option<String>,
+        arguments: String,
+    },
+    ReasoningSummaryTextDelta {
+        item_id: String,
+        output_index: usize,
+        summary_index: usize,
+        delta: String,
+    },
+    ReasoningEncryptedContent {
+        item_id: String,
+        output_index: usize,
+        content_index: usize,
+        encrypted_content: String,
+    },
+    ReasoningTextDelta {
+        item_id: String,
+        output_index: usize,
+        content_index: usize,
+        delta: String,
+    },
+    OutputItemAdded {
+        output_index: usize,
+        item: ResponseOutputItem,
+    },
+    OutputItemDone {
+        output_index: usize,
+        item: ResponseOutputItem,
+    },
+    Completed {
+        response: CompletedResponse,
+    },
+    Error {
+        code: String,
+        message: String,
+        param: Option<String>,
+    },
+    Failed {
+        response: CompletedResponse,
+    },
+    Incomplete {
+        response: IncompleteResponse,
+    },
+    Other {
+        event_type: String,
+        data: serde_json::Value,
+    },
+}
+
+impl From<KnownResponsesStreamEvent> for ResponsesStreamEvent {
+    fn from(event: KnownResponsesStreamEvent) -> Self {
+        match event {
+            KnownResponsesStreamEvent::OutputTextDelta {
+                item_id,
+                output_index,
+                content_index,
+                delta,
+            } => Self::OutputTextDelta {
+                item_id,
+                output_index,
+                content_index,
+                delta,
+            },
+            KnownResponsesStreamEvent::OutputTextDone {
+                item_id,
+                output_index,
+                content_index,
+                text,
+            } => Self::OutputTextDone {
+                item_id,
+                output_index,
+                content_index,
+                text,
+            },
+            KnownResponsesStreamEvent::FunctionCallArgumentsDelta {
+                item_id,
+                output_index,
+                call_id,
+                delta,
+            } => Self::FunctionCallArgumentsDelta {
+                item_id,
+                output_index,
+                call_id,
+                delta,
+            },
+            KnownResponsesStreamEvent::FunctionCallArgumentsDone {
+                item_id,
+                output_index,
+                call_id,
+                arguments,
+            } => Self::FunctionCallArgumentsDone {
+                item_id,
+                output_index,
+                call_id,
+                arguments,
+            },
+            KnownResponsesStreamEvent::ReasoningSummaryTextDelta {
+                item_id,
+                output_index,
+                summary_index,
+                delta,
+            } => Self::ReasoningSummaryTextDelta {
+                item_id,
+                output_index,
+                summary_index,
+                delta,
+            },
+            KnownResponsesStreamEvent::ReasoningEncryptedContent {
+                item_id,
+                output_index,
+                content_index,
+                encrypted_content,
+            } => Self::ReasoningEncryptedContent {
+                item_id,
+                output_index,
+                content_index,
+                encrypted_content,
+            },
+            KnownResponsesStreamEvent::ReasoningTextDelta {
+                item_id,
+                output_index,
+                content_index,
+                delta,
+            } => Self::ReasoningTextDelta {
+                item_id,
+                output_index,
+                content_index,
+                delta,
+            },
+            KnownResponsesStreamEvent::OutputItemAdded { output_index, item } => {
+                Self::OutputItemAdded { output_index, item }
+            }
+            KnownResponsesStreamEvent::OutputItemDone { output_index, item } => {
+                Self::OutputItemDone { output_index, item }
+            }
+            KnownResponsesStreamEvent::Completed { response } => Self::Completed { response },
+            KnownResponsesStreamEvent::Error {
+                code,
+                message,
+                param,
+            } => Self::Error {
+                code,
+                message,
+                param,
+            },
+            KnownResponsesStreamEvent::Failed { response } => Self::Failed { response },
+            KnownResponsesStreamEvent::Incomplete { response } => Self::Incomplete { response },
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ResponsesStreamEvent {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let data = serde_json::Value::deserialize(deserializer)?;
+        let event_type = data
+            .get("type")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| serde::de::Error::missing_field("type"))?
+            .to_owned();
+        Ok(
+            serde_json::from_value::<KnownResponsesStreamEvent>(data.clone())
+                .map(Self::from)
+                .unwrap_or(Self::Other { event_type, data }),
+        )
+    }
 }
 
 impl ResponsesStreamEvent {

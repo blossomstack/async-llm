@@ -13,7 +13,7 @@ pub const DEFAULT_ISSUER: &str = "https://auth.openai.com";
 const EXPIRY_SKEW_SECONDS: u64 = 60;
 
 /// Persisted ChatGPT OAuth tokens and their selected account identifier.
-#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Clone, Default, Deserialize, Serialize, PartialEq, Eq)]
 pub struct StoredTokens {
     pub access_token: String,
     pub refresh_token: String,
@@ -23,6 +23,19 @@ pub struct StoredTokens {
     pub account_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub expires_at: Option<u64>,
+}
+
+impl std::fmt::Debug for StoredTokens {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("StoredTokens")
+            .field("access_token", &"<redacted>")
+            .field("refresh_token", &"<redacted>")
+            .field("id_token", &self.id_token.as_ref().map(|_| "<redacted>"))
+            .field("account_id", &self.account_id)
+            .field("expires_at", &self.expires_at)
+            .finish()
+    }
 }
 
 impl StoredTokens {
