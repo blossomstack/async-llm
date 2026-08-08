@@ -7,7 +7,7 @@ use serde::{de::DeserializeOwned, Serialize};
 use std::{pin::Pin, time::Duration};
 use tokio_stream::{Stream, StreamExt as _};
 
-use crate::{
+use super::{
     errors::{map_deserialization_error, AnthropicError, StreamError},
     messages::Messages,
     models::Models,

@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize, Serializer};
 use serde_json::Value;
 use tokio_stream::Stream;
 
-use crate::{errors::AnthropicError, messages};
+use super::{errors::AnthropicError, messages};
 
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Default)]
 pub struct Usage {

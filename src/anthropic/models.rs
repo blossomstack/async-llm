@@ -1,4 +1,4 @@
-use crate::{
+use super::{
     errors::AnthropicError,
     types::{GetModelResponse, ListModelsResponse},
     Client,
