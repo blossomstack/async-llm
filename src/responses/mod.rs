@@ -73,6 +73,8 @@ pub struct Client {
     http_client: reqwest::Client,
     base_url: String,
     credential: Credential,
+    connect_timeout: Duration,
+    read_timeout: Duration,
     max_retries: u32,
     retry_delay: Duration,
 }
@@ -84,6 +86,8 @@ impl Client {
             http_client: default_http_client(),
             base_url: DEFAULT_BASE_URL.into(),
             credential: Credential::ApiKey(key.into()),
+            connect_timeout: DEFAULT_CONNECT_TIMEOUT,
+            read_timeout: DEFAULT_READ_TIMEOUT,
             max_retries: DEFAULT_MAX_RETRIES,
             retry_delay: DEFAULT_RETRY_DELAY,
         }
@@ -95,6 +99,8 @@ impl Client {
             http_client: default_http_client(),
             base_url: "https://chatgpt.com".into(),
             credential: Credential::ChatGpt(tokens),
+            connect_timeout: DEFAULT_CONNECT_TIMEOUT,
+            read_timeout: DEFAULT_READ_TIMEOUT,
             max_retries: DEFAULT_MAX_RETRIES,
             retry_delay: DEFAULT_RETRY_DELAY,
         }
@@ -110,6 +116,39 @@ impl Client {
     pub fn max_retries(mut self, max_retries: u32) -> Self {
         self.max_retries = max_retries;
         self
+    }
+
+    /// Backoff before the first retry; each further attempt doubles it.
+    #[must_use]
+    pub fn retry_delay(mut self, retry_delay: Duration) -> Self {
+        self.retry_delay = retry_delay;
+        self
+    }
+
+    #[must_use]
+    pub fn connect_timeout(mut self, timeout: Duration) -> Self {
+        self.connect_timeout = timeout;
+        self.rebuild_http_client();
+        self
+    }
+
+    /// How long a stream may go without a byte before it is abandoned. Without
+    /// one a stalled response holds the turn open indefinitely.
+    #[must_use]
+    pub fn read_timeout(mut self, timeout: Duration) -> Self {
+        self.read_timeout = timeout;
+        self.rebuild_http_client();
+        self
+    }
+
+    fn rebuild_http_client(&mut self) {
+        if let Ok(http_client) = reqwest::Client::builder()
+            .connect_timeout(self.connect_timeout)
+            .read_timeout(self.read_timeout)
+            .build()
+        {
+            self.http_client = http_client;
+        }
     }
 
     async fn request(
