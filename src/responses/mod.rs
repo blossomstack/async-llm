@@ -132,6 +132,9 @@ impl Client {
                 if let Some(account_id) = tokens.account_id().await? {
                     request_builder = request_builder.header("chatgpt-account-id", account_id);
                 }
+                if let Some(originator) = tokens.auth().originator() {
+                    request_builder = request_builder.header("originator", originator);
+                }
                 Ok(request_builder)
             }
         }

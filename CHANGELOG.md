@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.0](https://github.com/blossomstack/async-llm/compare/v0.9.0...v0.10.0) - 2026-08-07
+
+### Fixed
+
+ChatGPT device login in 0.9.0 could not complete against OpenAI. Every item below is what the endpoints actually do:
+
+- `DeviceLogin::interval` arrives as a JSON string, so it is now read leniently and floors at one second. A numeric-only reader failed the whole user-code response.
+- OpenAI's user-code response carries no `verification_uri`; `start_device_login` now derives it from the issuer instead of leaving it empty.
+- The `originator` header is sent on the user-code, device-token, token-exchange, refresh, and Codex Responses requests.
+- The authorization-code exchange sends `redirect_uri`.
+- An unapproved code is reported as `DeviceLoginPoll::Pending` for any unsuccessful poll, not only for a body naming `authorization_pending`.
+- A token response without `expires_in` now expires in an hour rather than never, so the credential still refreshes.
+- A 5xx from the auth endpoint is `ResponsesError::Overloaded` rather than `Api`, keeping "the endpoint is unwell" apart from "the credential was rejected".
+
+### Changed
+
+- **Breaking:** `ChatGptAuth` carries the issuer, client id, and originator. `ChatGptTokens::with_store_and_issuer` becomes `ChatGptTokens::new(tokens, store, auth)`, and `start_device_login`/`poll_device_login` take `&ChatGptAuth` in place of separate issuer and client-id arguments.
+
 ## [0.9.0](https://github.com/blossomstack/async-llm/compare/v0.8.0...v0.9.0) - 2026-08-07
 
 ### Added

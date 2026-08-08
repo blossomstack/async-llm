@@ -11,6 +11,76 @@ use std::{
 
 pub const DEFAULT_ISSUER: &str = "https://auth.openai.com";
 const EXPIRY_SKEW_SECONDS: u64 = 60;
+/// OpenAI's documented default when a token response omits `expires_in`.
+/// Treating an absent value as "never expires" would strand the credential:
+/// nothing would ever refresh it, and every call after the hour would 401.
+const DEFAULT_EXPIRES_IN_SECONDS: u64 = 3600;
+const DEFAULT_POLL_INTERVAL_SECONDS: u64 = 5;
+
+/// Identifies the calling client to OpenAI's ChatGPT auth and Codex endpoints.
+///
+/// The device-auth endpoints are not the public OAuth ones: they key their
+/// behaviour off `client_id` and off an `originator` header naming the tool
+/// making the request.
+#[derive(Clone, Debug)]
+pub struct ChatGptAuth {
+    issuer: String,
+    client_id: String,
+    originator: Option<String>,
+}
+
+impl ChatGptAuth {
+    #[must_use]
+    pub fn new(client_id: impl Into<String>) -> Self {
+        Self {
+            issuer: DEFAULT_ISSUER.into(),
+            client_id: client_id.into(),
+            originator: None,
+        }
+    }
+
+    /// Point the flow at a different issuer. Tests only — there is one OpenAI.
+    #[must_use]
+    pub fn with_issuer(mut self, issuer: impl Into<String>) -> Self {
+        self.issuer = issuer.into().trim_end_matches('/').into();
+        self
+    }
+
+    #[must_use]
+    pub fn with_originator(mut self, originator: impl Into<String>) -> Self {
+        self.originator = Some(originator.into());
+        self
+    }
+
+    #[must_use]
+    pub fn issuer(&self) -> &str {
+        &self.issuer
+    }
+
+    #[must_use]
+    pub fn client_id(&self) -> &str {
+        &self.client_id
+    }
+
+    #[must_use]
+    pub fn originator(&self) -> Option<&str> {
+        self.originator.as_deref()
+    }
+
+    /// Where the person approves a device login. OpenAI's user-code response
+    /// does not carry it, so it is derived rather than read.
+    #[must_use]
+    pub fn verification_url(&self) -> String {
+        format!("{}/codex/device", self.issuer)
+    }
+
+    fn identify(&self, builder: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
+        match &self.originator {
+            Some(originator) => builder.header("originator", originator),
+            None => builder,
+        }
+    }
+}
 
 /// Persisted ChatGPT OAuth tokens and their selected account identifier.
 #[derive(Clone, Default, Deserialize, Serialize, PartialEq, Eq)]
@@ -72,34 +142,31 @@ pub trait TokenStore: Send + Sync {
 pub struct ChatGptTokens {
     tokens: RwLock<StoredTokens>,
     store: Arc<dyn TokenStore>,
-    issuer: String,
-    client_id: String,
+    auth: ChatGptAuth,
 }
 
 impl std::fmt::Debug for ChatGptTokens {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter
             .debug_struct("ChatGptTokens")
-            .field("issuer", &self.issuer)
-            .field("client_id", &self.client_id)
+            .field("auth", &self.auth)
             .finish_non_exhaustive()
     }
 }
 
 impl ChatGptTokens {
     #[must_use]
-    pub fn with_store_and_issuer(
-        tokens: StoredTokens,
-        store: Arc<dyn TokenStore>,
-        issuer: impl Into<String>,
-        client_id: impl Into<String>,
-    ) -> Self {
+    pub fn new(tokens: StoredTokens, store: Arc<dyn TokenStore>, auth: ChatGptAuth) -> Self {
         Self {
             tokens: RwLock::new(tokens),
             store,
-            issuer: issuer.into().trim_end_matches('/').into(),
-            client_id: client_id.into(),
+            auth,
         }
+    }
+
+    #[must_use]
+    pub fn auth(&self) -> &ChatGptAuth {
+        &self.auth
     }
 
     pub async fn access_token(&self) -> Result<String, ResponsesError> {
@@ -131,13 +198,17 @@ impl ChatGptTokens {
             .read()
             .map_err(|_| ResponsesError::Authentication("token lock poisoned".into()))?
             .clone();
-        let response = reqwest::Client::new()
-            .post(format!("{}/oauth/token", self.issuer))
-            .form(&[
-                ("grant_type", "refresh_token"),
-                ("refresh_token", existing.refresh_token.as_str()),
-                ("client_id", self.client_id.as_str()),
-            ])
+        let response = self
+            .auth
+            .identify(
+                reqwest::Client::new()
+                    .post(format!("{}/oauth/token", self.auth.issuer))
+                    .form(&[
+                        ("grant_type", "refresh_token"),
+                        ("refresh_token", existing.refresh_token.as_str()),
+                        ("client_id", self.auth.client_id.as_str()),
+                    ]),
+            )
             .send()
             .await?;
         let tokens = parse_token_response(response, Some(&existing)).await?;
@@ -155,12 +226,36 @@ impl ChatGptTokens {
 pub struct DeviceLogin {
     pub device_auth_id: String,
     pub user_code: String,
+    /// Where the person approves this login. OpenAI's user-code response omits
+    /// it, so `start_device_login` derives it from the issuer.
     #[serde(default)]
     pub verification_uri: String,
-    #[serde(default)]
+    /// Seconds to wait between polls. OpenAI sends this as a JSON *string*, so
+    /// it is read leniently; under a second would rate-limit the very login it
+    /// is trying to complete.
+    #[serde(
+        default = "default_poll_interval",
+        deserialize_with = "deserialize_poll_interval"
+    )]
     pub interval: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub code_verifier: Option<String>,
+}
+
+fn default_poll_interval() -> u64 {
+    DEFAULT_POLL_INTERVAL_SECONDS
+}
+
+fn deserialize_poll_interval<'de, D>(deserializer: D) -> Result<u64, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = serde_json::Value::deserialize(deserializer)?;
+    let seconds = match &value {
+        serde_json::Value::String(text) => text.parse::<u64>().ok(),
+        other => other.as_u64(),
+    };
+    Ok(seconds.unwrap_or(DEFAULT_POLL_INTERVAL_SECONDS).max(1))
 }
 
 impl DeviceLogin {
@@ -201,74 +296,90 @@ pub enum DeviceLoginPoll {
     Approved(Arc<ChatGptTokens>),
 }
 
-/// Starts the ChatGPT device authorization flow against an issuer.
+/// Starts the ChatGPT device authorization flow.
 pub async fn start_device_login(
     http_client: &reqwest::Client,
-    issuer: impl AsRef<str>,
-    client_id: impl Into<String>,
+    auth: &ChatGptAuth,
 ) -> Result<DeviceLogin, ResponsesError> {
-    let issuer = issuer.as_ref().trim_end_matches('/');
-    let client_id = client_id.into();
-    let response = http_client
-        .post(format!("{issuer}/api/accounts/deviceauth/usercode"))
-        .json(&serde_json::json!({"client_id": client_id}))
+    let response = auth
+        .identify(
+            http_client
+                .post(format!(
+                    "{}/api/accounts/deviceauth/usercode",
+                    auth.issuer()
+                ))
+                .json(&serde_json::json!({"client_id": auth.client_id()})),
+        )
         .send()
         .await?;
-    parse_json_response(response).await
+    let mut login: DeviceLogin = parse_json_response(response).await?;
+    if login.verification_uri.is_empty() {
+        login.verification_uri = auth.verification_url();
+    }
+    Ok(login)
 }
 
 /// Polls a device authorization flow. Pending authorization is not an error.
+///
+/// The device-auth endpoint answers 4xx for the whole window in which the
+/// person has not yet approved the code, so an unsuccessful poll is reported as
+/// [`DeviceLoginPoll::Pending`] rather than as a failure — a login that is
+/// merely unfinished must not look like a broken one.
 pub async fn poll_device_login(
     http_client: &reqwest::Client,
-    issuer: impl AsRef<str>,
-    client_id: impl Into<String>,
+    auth: &ChatGptAuth,
     login: &DeviceLogin,
     store: Arc<dyn TokenStore>,
 ) -> Result<DeviceLoginPoll, ResponsesError> {
-    let issuer = issuer.as_ref().trim_end_matches('/').to_string();
-    let client_id = client_id.into();
-    let response = http_client
-        .post(format!("{issuer}/api/accounts/deviceauth/token"))
-        .json(&login.poll_request())
+    let response = auth
+        .identify(
+            http_client
+                .post(format!("{}/api/accounts/deviceauth/token", auth.issuer()))
+                .json(&login.poll_request()),
+        )
         .send()
         .await?;
     let status = response.status();
     let body = response.text().await?;
     if !status.is_success() {
-        if body.contains("authorization_pending") {
-            return Ok(DeviceLoginPoll::Pending);
-        }
-        return Err(ResponsesError::Api {
-            status: status.as_u16(),
-            body,
-        });
+        return Ok(DeviceLoginPoll::Pending);
     }
-    let approval: DeviceApproval = serde_json::from_str(&body).map_err(|error| {
-        ResponsesError::Authentication(format!("invalid device authorization response: {error}"))
-    })?;
-    let code_verifier = approval
+    // An approval that carries neither code nor verifier is the same
+    // "not finished yet" state expressed as a 200.
+    let Ok(approval) = serde_json::from_str::<DeviceApproval>(&body) else {
+        return Ok(DeviceLoginPoll::Pending);
+    };
+    let Some(code_verifier) = approval
         .code_verifier
         .or_else(|| login.code_verifier.clone())
-        .ok_or_else(|| {
-            ResponsesError::Authentication(
-                "device authorization response omitted code_verifier".into(),
-            )
-        })?;
-    let response = http_client
-        .post(format!("{issuer}/oauth/token"))
-        .form(&[
-            ("grant_type", "authorization_code"),
-            ("client_id", client_id.as_str()),
-            ("code", approval.authorization_code.as_str()),
-            ("code_verifier", code_verifier.as_str()),
-        ])
+    else {
+        return Ok(DeviceLoginPoll::Pending);
+    };
+    // OpenAI's own device callback. Nothing ever navigates to it — declaring it
+    // is the protocol formality that lets a server with no reachable redirect
+    // complete the exchange at all.
+    let redirect_uri = format!("{}/deviceauth/callback", auth.issuer());
+    let response = auth
+        .identify(
+            http_client
+                .post(format!("{}/oauth/token", auth.issuer()))
+                .form(&[
+                    ("grant_type", "authorization_code"),
+                    ("client_id", auth.client_id()),
+                    ("code", approval.authorization_code.as_str()),
+                    ("redirect_uri", redirect_uri.as_str()),
+                    ("code_verifier", code_verifier.as_str()),
+                ]),
+        )
         .send()
         .await?;
     let tokens = parse_token_response(response, None).await?;
     store.save(tokens.clone()).await?;
-    Ok(DeviceLoginPoll::Approved(Arc::new(
-        ChatGptTokens::with_store_and_issuer(tokens, store, issuer, client_id),
-    )))
+    Ok(DeviceLoginPoll::Approved(Arc::new(ChatGptTokens::new(
+        tokens,
+        store,
+        auth.clone(),
+    ))))
 }
 
 #[derive(Deserialize)]
@@ -317,9 +428,9 @@ async fn parse_token_response(
             })?,
         id_token,
         account_id,
-        expires_at: response
-            .expires_in
-            .map(|expires_in| unix_time().saturating_add(expires_in)),
+        expires_at: Some(
+            unix_time().saturating_add(response.expires_in.unwrap_or(DEFAULT_EXPIRES_IN_SECONDS)),
+        ),
     })
 }
 
@@ -329,9 +440,19 @@ async fn parse_json_response<T: serde::de::DeserializeOwned>(
     let status = response.status();
     let body = response.text().await?;
     if !status.is_success() {
-        return Err(ResponsesError::Api {
-            status: status.as_u16(),
-            body,
+        // A 5xx from the auth endpoint is the endpoint being unwell, not the
+        // credential being rejected. Keeping the two apart is what lets a
+        // caller retry instead of discarding a refresh token that still works.
+        return Err(if status.as_u16() >= 500 {
+            ResponsesError::Overloaded {
+                status: status.as_u16(),
+                body,
+            }
+        } else {
+            ResponsesError::Api {
+                status: status.as_u16(),
+                body,
+            }
         });
     }
     serde_json::from_str(&body)

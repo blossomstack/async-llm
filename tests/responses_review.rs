@@ -144,7 +144,7 @@ fn final_refusal_and_unrecognized_events_preserve_protocol_data() {
 
 #[tokio::test]
 async fn refresh_response_without_id_or_refresh_tokens_keeps_stored_identity() {
-    use async_llm::responses::chatgpt::{ChatGptTokens, TokenStore};
+    use async_llm::responses::chatgpt::{ChatGptAuth, ChatGptTokens, TokenStore};
     use async_trait::async_trait;
     use std::sync::{Arc, Mutex};
     use wiremock::{
@@ -180,7 +180,7 @@ async fn refresh_response_without_id_or_refresh_tokens_keeps_stored_identity() {
         .mount(&server)
         .await;
     let store = Arc::new(Store::default());
-    let tokens = ChatGptTokens::with_store_and_issuer(
+    let tokens = ChatGptTokens::new(
         StoredTokens {
             access_token: "old-access".into(),
             refresh_token: "stored-refresh".into(),
@@ -189,8 +189,7 @@ async fn refresh_response_without_id_or_refresh_tokens_keeps_stored_identity() {
             expires_at: None,
         },
         store.clone(),
-        server.uri(),
-        "test-client",
+        ChatGptAuth::new("test-client").with_issuer(server.uri()),
     );
     tokens.refresh().await.unwrap();
     assert_eq!(tokens.access_token().await.unwrap(), "replacement-access");

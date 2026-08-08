@@ -161,7 +161,7 @@ async fn client_classifies_responses_http_statuses() {
 
 #[tokio::test]
 async fn chatgpt_refresh_extracts_preferred_account_and_persists_tokens() {
-    use async_llm::responses::chatgpt::{ChatGptTokens, StoredTokens, TokenStore};
+    use async_llm::responses::chatgpt::{ChatGptAuth, ChatGptTokens, StoredTokens, TokenStore};
     use async_trait::async_trait;
     use std::sync::{Arc, Mutex};
     use wiremock::{
@@ -206,8 +206,11 @@ async fn chatgpt_refresh_extracts_preferred_account_and_persists_tokens() {
         .await;
 
     let store = Arc::new(RecordingStore::default());
-    let tokens =
-        ChatGptTokens::with_store_and_issuer(stored, store.clone(), server.uri(), "test-client");
+    let tokens = ChatGptTokens::new(
+        stored,
+        store.clone(),
+        ChatGptAuth::new("test-client").with_issuer(server.uri()),
+    );
     tokens.refresh().await.unwrap();
 
     assert_eq!(tokens.access_token().await.unwrap(), "new-access");
@@ -229,15 +232,17 @@ fn device_login_serializes_authorization_and_poll_requests() {
     );
 }
 
+/// The device-auth endpoints as OpenAI actually answers them: `interval` is a
+/// string, there is no `verification_uri`, and every call carries `originator`.
 #[tokio::test]
 async fn device_login_start_and_poll_use_native_auth_payloads() {
     use async_llm::responses::chatgpt::{
-        poll_device_login, start_device_login, StoredTokens, TokenStore,
+        poll_device_login, start_device_login, ChatGptAuth, StoredTokens, TokenStore,
     };
     use async_trait::async_trait;
     use std::sync::Arc;
     use wiremock::{
-        matchers::{body_json, method, path},
+        matchers::{body_json, header, method, path},
         Mock, MockServer, ResponseTemplate,
     };
 
@@ -257,17 +262,18 @@ async fn device_login_start_and_poll_use_native_auth_payloads() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))
         .and(path("/api/accounts/deviceauth/usercode"))
+        .and(header("originator", "test-tool"))
         .and(body_json(serde_json::json!({"client_id": "test-client"})))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
             "device_auth_id": "device_1",
             "user_code": "ABCD",
-            "verification_uri": "https://auth.openai.com/activate",
-            "interval": 5
+            "interval": "7"
         })))
         .mount(&server)
         .await;
     Mock::given(method("POST"))
         .and(path("/api/accounts/deviceauth/token"))
+        .and(header("originator", "test-tool"))
         .and(body_json(
             serde_json::json!({"device_auth_id": "device_1", "user_code": "ABCD"}),
         ))
@@ -279,6 +285,13 @@ async fn device_login_start_and_poll_use_native_auth_payloads() {
         .await;
     Mock::given(method("POST"))
         .and(path("/oauth/token"))
+        .and(header("originator", "test-tool"))
+        .and(wiremock::matchers::body_string_contains(
+            "redirect_uri=http",
+        ))
+        .and(wiremock::matchers::body_string_contains(
+            "deviceauth%2Fcallback",
+        ))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
             "access_token": "access",
             "refresh_token": "refresh"
@@ -286,29 +299,73 @@ async fn device_login_start_and_poll_use_native_auth_payloads() {
         .mount(&server)
         .await;
 
+    let auth = ChatGptAuth::new("test-client")
+        .with_issuer(server.uri())
+        .with_originator("test-tool");
     let http_client = reqwest::Client::new();
-    let login = start_device_login(&http_client, server.uri(), "test-client")
+    let login = start_device_login(&http_client, &auth).await.unwrap();
+    assert_eq!(login.interval, 7);
+    assert_eq!(login.verification_uri, auth.verification_url());
+    assert!(login.verification_uri.ends_with("/codex/device"));
+
+    let poll = poll_device_login(&http_client, &auth, &login, Arc::new(EmptyStore))
         .await
         .unwrap();
-    let poll = poll_device_login(
-        &http_client,
-        server.uri(),
-        "test-client",
-        &login,
-        Arc::new(EmptyStore),
-    )
-    .await
-    .unwrap();
     let async_llm::responses::chatgpt::DeviceLoginPoll::Approved(tokens) = poll else {
         panic!("device authorization should be approved");
     };
     assert_eq!(tokens.access_token().await.unwrap(), "access");
 }
 
+/// An unapproved code is answered with a 4xx that names no standard OAuth
+/// error. Reporting that as a failure would abort a login that is merely
+/// unfinished.
+#[tokio::test]
+async fn an_unapproved_device_code_is_pending_whatever_the_4xx_body_says() {
+    use async_llm::responses::chatgpt::{
+        poll_device_login, ChatGptAuth, DeviceLogin, DeviceLoginPoll, StoredTokens, TokenStore,
+    };
+    use async_trait::async_trait;
+    use std::sync::Arc;
+    use wiremock::{
+        matchers::{method, path},
+        Mock, MockServer, ResponseTemplate,
+    };
+
+    struct Store;
+
+    #[async_trait]
+    impl TokenStore for Store {
+        async fn load(&self) -> Result<Option<StoredTokens>, async_llm::responses::ResponsesError> {
+            Ok(None)
+        }
+
+        async fn save(&self, _: StoredTokens) -> Result<(), async_llm::responses::ResponsesError> {
+            Ok(())
+        }
+    }
+
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/api/accounts/deviceauth/token"))
+        .respond_with(ResponseTemplate::new(400).set_body_string("not yet"))
+        .mount(&server)
+        .await;
+
+    let auth = ChatGptAuth::new("client").with_issuer(server.uri());
+    let login = DeviceLogin::new("device", "user", "", 1);
+    assert!(matches!(
+        poll_device_login(&reqwest::Client::new(), &auth, &login, Arc::new(Store))
+            .await
+            .unwrap(),
+        DeviceLoginPoll::Pending
+    ));
+}
+
 #[tokio::test]
 async fn chatgpt_client_uses_codex_endpoint_and_account_header() {
     use async_llm::responses::{
-        chatgpt::{ChatGptTokens, StoredTokens, TokenStore},
+        chatgpt::{ChatGptAuth, ChatGptTokens, StoredTokens, TokenStore},
         Client, Credential,
     };
     use async_trait::async_trait;
@@ -333,11 +390,10 @@ async fn chatgpt_client_uses_codex_endpoint_and_account_header() {
     }
 
     let id_token = "eyJhbGciOiJub25lIn0.eyAiaHR0cHM6Ly9hcGkub3BlbmFpLmNvbS9hdXRoIjp7ImNoYXRncHRfYWNjb3VudF9pZCI6ImFjY3RfMSJ9fQ.";
-    let tokens = Arc::new(ChatGptTokens::with_store_and_issuer(
+    let tokens = Arc::new(ChatGptTokens::new(
         StoredTokens::new("access", "refresh", id_token).unwrap(),
         Arc::new(EmptyStore),
-        "https://auth.openai.com",
-        "test-client",
+        ChatGptAuth::new("test-client").with_issuer("https://auth.openai.com"),
     ));
     assert!(matches!(
         Credential::ChatGpt(tokens.clone()),
@@ -462,7 +518,7 @@ fn id_token_account_claims_prefer_top_level_then_namespaced_then_organization() 
 
 #[tokio::test]
 async fn refreshes_expiring_tokens_with_form_data_and_retains_missing_claims() {
-    use async_llm::responses::chatgpt::{ChatGptTokens, StoredTokens, TokenStore};
+    use async_llm::responses::chatgpt::{ChatGptAuth, ChatGptTokens, StoredTokens, TokenStore};
     use async_trait::async_trait;
     use std::sync::{Arc, Mutex};
     use wiremock::{
@@ -500,7 +556,7 @@ async fn refreshes_expiring_tokens_with_form_data_and_retains_missing_claims() {
         .mount(&server)
         .await;
     let store = Arc::new(Store::default());
-    let tokens = ChatGptTokens::with_store_and_issuer(
+    let tokens = ChatGptTokens::new(
         StoredTokens {
             access_token: "old-access".into(),
             refresh_token: "old-refresh".into(),
@@ -509,8 +565,7 @@ async fn refreshes_expiring_tokens_with_form_data_and_retains_missing_claims() {
             expires_at: Some(0),
         },
         store.clone(),
-        server.uri(),
-        "client",
+        ChatGptAuth::new("client").with_issuer(server.uri()),
     );
 
     assert_eq!(tokens.access_token().await.unwrap(), "new-access");
@@ -555,7 +610,7 @@ async fn responses_stream_parses_success_without_content_type() {
 #[tokio::test]
 async fn device_login_pending_poll_then_approval_exchanges_authorization_code() {
     use async_llm::responses::chatgpt::{
-        poll_device_login, DeviceLogin, DeviceLoginPoll, StoredTokens, TokenStore,
+        poll_device_login, ChatGptAuth, DeviceLogin, DeviceLoginPoll, StoredTokens, TokenStore,
     };
     use async_trait::async_trait;
     use std::sync::{
@@ -563,7 +618,7 @@ async fn device_login_pending_poll_then_approval_exchanges_authorization_code() 
         Arc,
     };
     use wiremock::{
-        matchers::{body_string, method, path},
+        matchers::{body_string_contains, method, path},
         Mock, MockServer, ResponseTemplate,
     };
 
@@ -600,8 +655,11 @@ async fn device_login_pending_poll_then_approval_exchanges_authorization_code() 
         .await;
     Mock::given(method("POST"))
         .and(path("/oauth/token"))
-        .and(body_string(
-            "grant_type=authorization_code&client_id=client&code=code&code_verifier=verifier",
+        .and(body_string_contains(
+            "grant_type=authorization_code&client_id=client&code=code&redirect_uri=",
+        ))
+        .and(body_string_contains(
+            "deviceauth%2Fcallback&code_verifier=verifier",
         ))
         .respond_with(
             ResponseTemplate::new(200).set_body_json(
@@ -612,18 +670,18 @@ async fn device_login_pending_poll_then_approval_exchanges_authorization_code() 
         .mount(&server)
         .await;
     let client = reqwest::Client::new();
+    let auth = ChatGptAuth::new("client").with_issuer(server.uri());
     let login = DeviceLogin::new("device", "user", "", 1);
     let store = Arc::new(Store);
     assert!(matches!(
-        poll_device_login(&client, server.uri(), "client", &login, store.clone())
+        poll_device_login(&client, &auth, &login, store.clone())
             .await
             .unwrap(),
         DeviceLoginPoll::Pending
     ));
-    let DeviceLoginPoll::Approved(tokens) =
-        poll_device_login(&client, server.uri(), "client", &login, store)
-            .await
-            .unwrap()
+    let DeviceLoginPoll::Approved(tokens) = poll_device_login(&client, &auth, &login, store)
+        .await
+        .unwrap()
     else {
         panic!("expected approval")
     };
@@ -633,7 +691,7 @@ async fn device_login_pending_poll_then_approval_exchanges_authorization_code() 
 #[tokio::test]
 async fn chatgpt_401_refreshes_once_and_retries_before_emitting_output() {
     use async_llm::responses::{
-        chatgpt::{ChatGptTokens, StoredTokens, TokenStore},
+        chatgpt::{ChatGptAuth, ChatGptTokens, StoredTokens, TokenStore},
         Client,
     };
     use async_trait::async_trait;
@@ -689,7 +747,7 @@ async fn chatgpt_401_refreshes_once_and_retries_before_emitting_output() {
         .expect(1)
         .mount(&server)
         .await;
-    let tokens = Arc::new(ChatGptTokens::with_store_and_issuer(
+    let tokens = Arc::new(ChatGptTokens::new(
         StoredTokens {
             access_token: "expired".into(),
             refresh_token: "refresh".into(),
@@ -698,8 +756,7 @@ async fn chatgpt_401_refreshes_once_and_retries_before_emitting_output() {
             expires_at: None,
         },
         Arc::new(Store),
-        server.uri(),
-        "client",
+        ChatGptAuth::new("client").with_issuer(server.uri()),
     ));
     let events = Client::with_chatgpt(tokens)
         .with_base_url(server.uri())
