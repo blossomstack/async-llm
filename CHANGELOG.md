@@ -21,6 +21,11 @@ ChatGPT device login in 0.9.0 could not complete against OpenAI. Every item belo
 - A token response without `expires_in` now expires in an hour rather than never, so the credential still refreshes.
 - A 5xx from the auth endpoint is `ResponsesError::Overloaded` rather than `Api`, keeping "the endpoint is unwell" apart from "the credential was rejected".
 
+### Added
+
+- `responses::Client::retry_delay`, `connect_timeout`, and `read_timeout`, matching what `openai::ClientBuilder` already exposed. The Responses client's backoff and stall timeout were previously fixed.
+- `mock::run_cli`, the `async-llm-mock` binary's argument handling as a library function, so a harness in another workspace can expose the same command without restating it.
+
 ### Changed
 
 - **Breaking:** `ChatGptAuth` carries the issuer, client id, and originator. `ChatGptTokens::with_store_and_issuer` becomes `ChatGptTokens::new(tokens, store, auth)`, and `start_device_login`/`poll_device_login` take `&ChatGptAuth` in place of separate issuer and client-id arguments.
