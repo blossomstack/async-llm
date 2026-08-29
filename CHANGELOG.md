@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.0](https://github.com/blossomstack/async-llm/compare/v0.10.0...v0.11.0) - 2026-08-29
+
+### Added
+
+- Anthropic `image` and `document` content blocks, with a `MediaSource` that is either inline base64 or a URL. Images and documents were the one thing `MessageContent` never carried; the type had carried a `// TODO` for them since it was written.
+- `ToolResultBlock`, so an Anthropic `tool_result` can carry an image alongside its text. A tool that produces a screenshot no longer needs a separate message to deliver it.
+- OpenAI Chat Completions `image_url` and `file` content parts, via `ChatContentPart`. Note that a `tool`-role message may still carry only text — the API rejects an image inside a tool result, so a caller has to put it in a following user message.
+
+### Changed
+
+- **Breaking.** Anthropic `ToolResult::content` is now `Option<ToolResultContent>` rather than `Option<String>`, and OpenAI `ChatMessage::content` is `Option<ChatContent>` rather than `Option<String>`. Both are untagged, so plain text still crosses the wire as a bare string and the JSON of an existing request is unchanged. `From<String>`/`From<&str>` are implemented for both, and the `ChatMessage` constructors now take `impl Into<ChatContent>`, so `ChatMessage::user("hi")` still compiles.
+
 ## [0.10.0](https://github.com/blossomstack/async-llm/compare/v0.9.0...v0.10.0) - 2026-08-07
 
 ### Fixed
