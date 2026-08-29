@@ -246,7 +246,8 @@ pub enum MessageContent {
     ToolResult(ToolResult),
     Text(Text),
     Thinking(Thinking),
-    // TODO: Implement images and documents
+    Image(Image),
+    Document(Document),
 }
 
 impl MessageContent {
@@ -281,6 +282,116 @@ impl MessageContent {
             None
         }
     }
+
+    pub fn as_image(&self) -> Option<&Image> {
+        if let MessageContent::Image(image) = self {
+            Some(image)
+        } else {
+            None
+        }
+    }
+
+    pub fn as_document(&self) -> Option<&Document> {
+        if let MessageContent::Document(document) = self {
+            Some(document)
+        } else {
+            None
+        }
+    }
+}
+
+/// Where a media block's bytes come from.
+///
+/// Anthropic accepts the bytes inline as base64, or a URL it fetches itself.
+/// The two are a tagged union on the wire rather than two optional fields, so
+/// a block carrying neither — or both — cannot be built.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum MediaSource {
+    Base64(Base64Source),
+    Url(UrlSource),
+}
+
+impl Default for MediaSource {
+    fn default() -> Self {
+        MediaSource::Base64(Base64Source::default())
+    }
+}
+
+/// Bytes inline. `media_type` is what the API dispatches on, so it must be the
+/// real type of `data` — "image/png", "application/pdf" and so on.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default, Builder)]
+#[builder(setter(into, strip_option), default)]
+pub struct Base64Source {
+    pub media_type: String,
+    /// Standard base64, no data-URL prefix.
+    pub data: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default, Builder)]
+#[builder(setter(into, strip_option), default)]
+pub struct UrlSource {
+    pub url: String,
+}
+
+/// An image the model can see.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default, Builder)]
+#[builder(setter(into, strip_option), default)]
+pub struct Image {
+    pub source: MediaSource,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_control: Option<CacheControl>,
+}
+
+impl Image {
+    /// An image from inline bytes, already base64-encoded.
+    pub fn base64(media_type: impl Into<String>, data: impl Into<String>) -> Self {
+        Image {
+            source: MediaSource::Base64(Base64Source {
+                media_type: media_type.into(),
+                data: data.into(),
+            }),
+            cache_control: None,
+        }
+    }
+}
+
+impl From<Image> for MessageContent {
+    fn from(image: Image) -> Self {
+        MessageContent::Image(image)
+    }
+}
+
+/// A document — a PDF — the model can read.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default, Builder)]
+#[builder(setter(into, strip_option), default)]
+pub struct Document {
+    pub source: MediaSource,
+    /// Shown to the model as the document's name, when supplied.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_control: Option<CacheControl>,
+}
+
+impl Document {
+    /// A document from inline bytes, already base64-encoded.
+    pub fn base64(media_type: impl Into<String>, data: impl Into<String>) -> Self {
+        Document {
+            source: MediaSource::Base64(Base64Source {
+                media_type: media_type.into(),
+                data: data.into(),
+            }),
+            title: None,
+            cache_control: None,
+        }
+    }
+}
+
+impl From<Document> for MessageContent {
+    fn from(document: Document) -> Self {
+        MessageContent::Document(document)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default, Builder)]
@@ -309,10 +420,74 @@ impl From<ToolUse> for MessageContentList {
 #[builder(setter(into, strip_option), default)]
 pub struct ToolResult {
     pub tool_use_id: String,
-    pub content: Option<String>,
+    pub content: Option<ToolResultContent>,
     pub is_error: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cache_control: Option<CacheControl>,
+}
+
+/// What a tool answered with.
+///
+/// A bare string for the common case, or a block list when the tool produced
+/// something that is not text — a screenshot, say. Untagged, so a plain string
+/// still goes over the wire as a plain string and existing callers are
+/// unaffected.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(untagged)]
+pub enum ToolResultContent {
+    Text(String),
+    Blocks(Vec<ToolResultBlock>),
+}
+
+impl Default for ToolResultContent {
+    fn default() -> Self {
+        ToolResultContent::Text(String::new())
+    }
+}
+
+// Concrete rather than a blanket `AsRef<str>`: a blanket impl would overlap
+// with `From<Vec<ToolResultBlock>>` under coherence, since a future `Vec` could
+// implement `AsRef<str>`.
+impl From<String> for ToolResultContent {
+    fn from(s: String) -> Self {
+        ToolResultContent::Text(s)
+    }
+}
+
+impl From<&str> for ToolResultContent {
+    fn from(s: &str) -> Self {
+        ToolResultContent::Text(s.to_string())
+    }
+}
+
+impl From<Vec<ToolResultBlock>> for ToolResultContent {
+    fn from(blocks: Vec<ToolResultBlock>) -> Self {
+        ToolResultContent::Blocks(blocks)
+    }
+}
+
+/// A block inside a `tool_result`.
+///
+/// Only text and images: Anthropic accepts nothing else there, and reusing
+/// [`MessageContent`] would let a caller nest a tool result inside a tool
+/// result.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum ToolResultBlock {
+    Text(Text),
+    Image(Image),
+}
+
+impl From<Text> for ToolResultBlock {
+    fn from(text: Text) -> Self {
+        ToolResultBlock::Text(text)
+    }
+}
+
+impl From<Image> for ToolResultBlock {
+    fn from(image: Image) -> Self {
+        ToolResultBlock::Image(image)
+    }
 }
 
 impl From<ToolResult> for MessageContent {

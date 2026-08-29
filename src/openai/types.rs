@@ -21,16 +21,140 @@ pub struct ToolCall {
 pub struct ChatMessage {
     pub role: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub content: Option<String>,
+    pub content: Option<ChatContent>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tool_calls: Option<Vec<ToolCall>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tool_call_id: Option<String>,
 }
 
+/// A message's content: plain text, or a list of parts when it carries
+/// something that is not text.
+///
+/// Untagged, so text still crosses the wire as a bare string — which is what
+/// the API expects and what every existing caller already sends.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(untagged)]
+pub enum ChatContent {
+    Text(String),
+    Parts(Vec<ChatContentPart>),
+}
+
+impl Default for ChatContent {
+    fn default() -> Self {
+        ChatContent::Text(String::new())
+    }
+}
+
+impl ChatContent {
+    /// The text of this content, joining part texts when it is a part list.
+    /// `None` when there is no text at all — a parts list of only images.
+    #[must_use]
+    pub fn text(&self) -> Option<String> {
+        match self {
+            ChatContent::Text(t) => Some(t.clone()),
+            ChatContent::Parts(parts) => {
+                let joined: Vec<&str> = parts
+                    .iter()
+                    .filter_map(|p| match p {
+                        ChatContentPart::Text { text } => Some(text.as_str()),
+                        ChatContentPart::ImageUrl { .. } | ChatContentPart::File { .. } => None,
+                    })
+                    .collect();
+                (!joined.is_empty()).then(|| joined.join("\n"))
+            }
+        }
+    }
+}
+
+impl From<String> for ChatContent {
+    fn from(s: String) -> Self {
+        ChatContent::Text(s)
+    }
+}
+
+impl From<&str> for ChatContent {
+    fn from(s: &str) -> Self {
+        ChatContent::Text(s.to_string())
+    }
+}
+
+impl From<Vec<ChatContentPart>> for ChatContent {
+    fn from(parts: Vec<ChatContentPart>) -> Self {
+        ChatContent::Parts(parts)
+    }
+}
+
+/// One part of a multi-part message.
+///
+/// Note that a `tool`-role message may carry only text: the Chat Completions
+/// API rejects an image inside a tool result, so a caller with an image to
+/// report has to put it in a following user message.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum ChatContentPart {
+    Text { text: String },
+    ImageUrl { image_url: ImageUrl },
+    File { file: FileContent },
+}
+
+impl ChatContentPart {
+    #[must_use]
+    pub fn text(text: impl Into<String>) -> Self {
+        ChatContentPart::Text { text: text.into() }
+    }
+
+    /// An image from inline bytes. The API takes a data URL here rather than
+    /// a separate media-type field, so the caller's media type and base64 are
+    /// folded into one.
+    #[must_use]
+    pub fn image_base64(media_type: &str, data: &str) -> Self {
+        ChatContentPart::ImageUrl {
+            image_url: ImageUrl {
+                url: format!("data:{media_type};base64,{data}"),
+                detail: None,
+            },
+        }
+    }
+
+    /// A document from inline bytes. `filename` is required by the API when
+    /// `file_data` is inline — it decides how the file is parsed.
+    #[must_use]
+    pub fn file_base64(filename: &str, media_type: &str, data: &str) -> Self {
+        ChatContentPart::File {
+            file: FileContent {
+                filename: Some(filename.to_string()),
+                file_data: Some(format!("data:{media_type};base64,{data}")),
+                file_id: None,
+            },
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+pub struct ImageUrl {
+    /// Either an `https://` URL or a `data:<media-type>;base64,<data>` URL.
+    pub url: String,
+    /// "low" | "high" | "auto". Omitted means the API's default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+pub struct FileContent {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub filename: Option<String>,
+    /// A `data:<media-type>;base64,<data>` URL.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub file_data: Option<String>,
+    /// An id from the Files API, as an alternative to inline bytes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub file_id: Option<String>,
+}
+
 impl ChatMessage {
     #[must_use]
-    pub fn new(role: impl Into<String>, content: Option<String>) -> Self {
+    pub fn new(role: impl Into<String>, content: Option<ChatContent>) -> Self {
         Self {
             role: role.into(),
             content,
@@ -39,23 +163,29 @@ impl ChatMessage {
         }
     }
 
+    /// A message carrying parts — text alongside images or files.
     #[must_use]
-    pub fn system(content: impl Into<String>) -> Self {
+    pub fn parts(role: impl Into<String>, parts: Vec<ChatContentPart>) -> Self {
+        Self::new(role, Some(ChatContent::Parts(parts)))
+    }
+
+    #[must_use]
+    pub fn system(content: impl Into<ChatContent>) -> Self {
         Self::new("system", Some(content.into()))
     }
 
     #[must_use]
-    pub fn user(content: impl Into<String>) -> Self {
+    pub fn user(content: impl Into<ChatContent>) -> Self {
         Self::new("user", Some(content.into()))
     }
 
     #[must_use]
-    pub fn assistant(content: impl Into<String>) -> Self {
+    pub fn assistant(content: impl Into<ChatContent>) -> Self {
         Self::new("assistant", Some(content.into()))
     }
 
     #[must_use]
-    pub fn tool(tool_call_id: impl Into<String>, content: impl Into<String>) -> Self {
+    pub fn tool(tool_call_id: impl Into<String>, content: impl Into<ChatContent>) -> Self {
         Self {
             role: "tool".to_string(),
             content: Some(content.into()),

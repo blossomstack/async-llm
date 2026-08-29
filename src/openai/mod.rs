@@ -10,9 +10,9 @@ use thiserror::Error;
 use tokio_stream::{Stream, StreamExt as _};
 
 pub use types::{
-    ChatCompletionChunk, ChatCompletionRequest, ChatMessage, Choice, Delta, DeltaFunction,
-    DeltaToolCall, FunctionCall, FunctionDef, PromptTokensDetails, StreamOptions, ToolCall,
-    ToolChoice, ToolDef, WireUsage,
+    ChatCompletionChunk, ChatCompletionRequest, ChatContent, ChatContentPart, ChatMessage, Choice,
+    Delta, DeltaFunction, DeltaToolCall, FileContent, FunctionCall, FunctionDef, ImageUrl,
+    PromptTokensDetails, StreamOptions, ToolCall, ToolChoice, ToolDef, WireUsage,
 };
 
 const DEFAULT_BASE_URL: &str = "https://api.openai.com";
