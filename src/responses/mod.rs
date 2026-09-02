@@ -12,8 +12,8 @@ use tokio_stream::{Stream, StreamExt as _};
 
 pub use types::{
     CompletedResponse, FunctionTool, IncompleteDetails, IncompleteResponse, ReasoningControl,
-    ResponseContentItem, ResponseErrorDetails, ResponseOutputItem, ResponsesRequest,
-    ResponsesStreamEvent, ResponsesUsage,
+    ResponseContentItem, ResponseErrorDetails, ResponseOutputItem, ResponsesInputTokensDetails,
+    ResponsesRequest, ResponsesStreamEvent, ResponsesUsage,
 };
 
 const DEFAULT_BASE_URL: &str = "https://api.openai.com";

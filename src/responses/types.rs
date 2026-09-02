@@ -155,11 +155,28 @@ pub struct ResponseOutputItem {
     pub arguments: Option<String>,
 }
 
+/// The breakdown of `input_tokens`, when the provider sends one.
+///
+/// `cached_tokens` is the part of the prompt served from the provider's cache,
+/// and it is a *subset* of `input_tokens` rather than an addition to it — the
+/// Responses API reports the total first and details it here. A caller that
+/// adds the two double-counts the cached span.
+#[derive(Debug, Clone, Default, Deserialize, PartialEq, Eq)]
+pub struct ResponsesInputTokensDetails {
+    #[serde(default)]
+    pub cached_tokens: u32,
+}
+
 /// Usage reported by a completed Responses response.
 #[derive(Debug, Clone, Default, Deserialize, PartialEq, Eq)]
 pub struct ResponsesUsage {
     #[serde(default)]
     pub input_tokens: u32,
+    /// Absent on providers that report no cache accounting at all, which is not
+    /// the same as a reported zero — one is "unknown", the other is "no hits".
+    /// `Option` so a caller can tell them apart.
+    #[serde(default)]
+    pub input_tokens_details: Option<ResponsesInputTokensDetails>,
     #[serde(default)]
     pub output_tokens: u32,
     #[serde(default)]
@@ -494,5 +511,62 @@ impl ResponsesStreamEvent {
                 },
             } if reason == "max_output_tokens"
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    /// The whole point of `Option`: a provider that reports no cache
+    /// accounting is not a provider reporting zero cache hits. Collapsing the
+    /// two makes every uncached provider look like a broken cache.
+    #[test]
+    fn absent_input_tokens_details_stays_absent() {
+        let usage: ResponsesUsage =
+            serde_json::from_value(json!({"input_tokens": 100, "output_tokens": 5}))
+                .expect("usage without details should deserialize");
+        assert_eq!(usage.input_tokens, 100);
+        assert!(usage.input_tokens_details.is_none());
+    }
+
+    #[test]
+    fn cached_tokens_are_read_from_the_details_object() {
+        let usage: ResponsesUsage = serde_json::from_value(json!({
+            "input_tokens": 12_062,
+            "input_tokens_details": {"cached_tokens": 11_904},
+            "output_tokens": 95,
+            "total_tokens": 12_157,
+        }))
+        .expect("usage with details should deserialize");
+        // `cached_tokens` is a subset of `input_tokens`, not an addition to it.
+        assert_eq!(usage.input_tokens, 12_062);
+        assert_eq!(
+            usage
+                .input_tokens_details
+                .expect("details present")
+                .cached_tokens,
+            11_904
+        );
+    }
+
+    /// Unknown keys in the details object must not fail the whole response:
+    /// the Responses API adds fields here (audio, text) without warning.
+    #[test]
+    fn unknown_detail_fields_are_ignored() {
+        let usage: ResponsesUsage = serde_json::from_value(json!({
+            "input_tokens": 10,
+            "input_tokens_details": {"cached_tokens": 4, "audio_tokens": 0},
+            "output_tokens": 1,
+        }))
+        .expect("unknown detail fields should be tolerated");
+        assert_eq!(
+            usage
+                .input_tokens_details
+                .expect("details present")
+                .cached_tokens,
+            4
+        );
     }
 }
