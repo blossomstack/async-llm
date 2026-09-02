@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.1](https://github.com/blossomstack/async-llm/compare/v0.11.0...v0.11.1) - 2026-09-02
+
+### Added
+
+- `ResponsesUsage::input_tokens_details`, carrying the Responses API's `cached_tokens`. The field was not deserialized, so the cached share of a prompt was dropped at the wire boundary and no consumer could see it — a caller sending a `prompt_cache_key` and getting hits had no way to tell.
+
+  It is an `Option`: a provider that reports no cache accounting is not a provider reporting zero cache hits, and collapsing the two makes an unmeasured cache indistinguishable from a broken one. `cached_tokens` is a subset of `input_tokens`, not an addition to it.
+
 ## [0.11.0](https://github.com/blossomstack/async-llm/compare/v0.10.0...v0.11.0) - 2026-08-29
 
 ### Added
